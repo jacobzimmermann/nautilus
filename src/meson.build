@@ -94,8 +94,6 @@ libnautilus_sources = [
   'nautilus-location-entry.h',
   'nautilus-mime-actions.c',
   'nautilus-mime-actions.h',
-  'nautilus-notebook.c',
-  'nautilus-notebook.h',
   'nautilus-pathbar.c',
   'nautilus-pathbar.h',
   'nautilus-places-view.c',

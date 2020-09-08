@@ -62,6 +62,8 @@ enum
     PROP_SELECTION,
     PROP_LOCATION,
     PROP_TOOLTIP,
+    PROP_ALLOW_STOP,
+    PROP_TITLE,
     NUM_PROPERTIES
 };
 
@@ -863,6 +865,18 @@ nautilus_window_slot_get_property (GObject    *object,
         }
         break;
 
+        case PROP_ALLOW_STOP:
+        {
+            g_value_set_boolean (value, nautilus_window_slot_get_allow_stop (self));
+        }
+        break;
+
+        case PROP_TITLE:
+        {
+            g_value_set_string (value, nautilus_window_slot_get_title (self));
+        }
+        break;
+
         default:
         {
             G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -926,6 +940,7 @@ nautilus_window_slot_constructed (GObject *object)
                             G_BINDING_DEFAULT);
 
     self->title = g_strdup (_("Loading…"));
+    g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_TITLE]);
 }
 
 static void
@@ -3055,6 +3070,20 @@ nautilus_window_slot_class_init (NautilusWindowSlotClass *klass)
                              NULL,
                              G_PARAM_READWRITE);
 
+    properties[PROP_ALLOW_STOP] =
+        g_param_spec_boolean ("allow-stop",
+                              "Allow stop",
+                              "Whether the slot allows stopping the loading",
+                              FALSE,
+                              G_PARAM_READABLE);
+
+    properties[PROP_TITLE] =
+        g_param_spec_string ("title",
+                             "Title",
+                             "The title of the slot",
+                             NULL,
+                             G_PARAM_READABLE);
+
     g_object_class_install_properties (oclass, NUM_PROPERTIES, properties);
 }
 
@@ -3147,6 +3176,8 @@ nautilus_window_slot_update_title (NautilusWindowSlot *self)
     if (do_sync)
     {
         nautilus_window_sync_title (window, self);
+
+        g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_TITLE]);
     }
 
     if (title != NULL)
@@ -3172,6 +3203,8 @@ nautilus_window_slot_set_allow_stop (NautilusWindowSlot *self,
 
     window = nautilus_window_slot_get_window (self);
     nautilus_window_sync_allow_stop (window, self);
+
+    g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_ALLOW_STOP]);
 }
 
 void
@@ -3372,14 +3405,15 @@ nautilus_window_slot_set_active (NautilusWindowSlot *self,
 
         if (active)
         {
-            int page_num;
+            AdwTabView *tab_view;
+            AdwTabPage *page;
 
             window = self->window;
-            page_num = gtk_notebook_page_num (GTK_NOTEBOOK (nautilus_window_get_notebook (window)),
-                                              GTK_WIDGET (self));
-            g_assert (page_num >= 0);
 
-            gtk_notebook_set_current_page (GTK_NOTEBOOK (nautilus_window_get_notebook (window)), page_num);
+            tab_view = nautilus_window_get_tab_view (window);
+            page = adw_tab_view_get_page (tab_view, GTK_WIDGET (self));
+
+            adw_tab_view_set_selected_page (tab_view, page);
 
             /* sync window to new slot */
             nautilus_window_sync_allow_stop (window, self);

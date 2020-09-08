@@ -80,7 +80,7 @@ void     nautilus_window_hide_sidebar         (NautilusWindow *window);
 void     nautilus_window_show_sidebar         (NautilusWindow *window);
 void nautilus_window_reset_menus (NautilusWindow *window);
 
-GtkWidget *         nautilus_window_get_notebook (NautilusWindow *window);
+AdwTabView * nautilus_window_get_tab_view (NautilusWindow *window);
 
 void     nautilus_window_show_about_dialog    (NautilusWindow *window);
 
