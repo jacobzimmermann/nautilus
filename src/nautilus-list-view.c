@@ -816,9 +816,7 @@ real_sort_directories_first_changed (NautilusFilesView *files_view)
 
     self->directories_first = nautilus_files_view_should_sort_directories_first (NAUTILUS_FILES_VIEW (self));
 
-    /* Reset the sorter to trigger ressorting */
-    nautilus_view_model_set_sorter (nautilus_list_base_get_model (NAUTILUS_LIST_BASE (self)),
-                                    gtk_column_view_get_sorter (self->view_ui));
+    nautilus_view_model_sort (nautilus_list_base_get_model (NAUTILUS_LIST_BASE (self)));
 }
 
 static void
@@ -924,7 +922,7 @@ bind_name_cell (GtkSignalListItemFactory *factory,
 {
     NautilusViewItem *item;
 
-    item = NAUTILUS_VIEW_ITEM (gtk_list_item_get_item (listitem));
+    item = listitem_get_view_item (listitem);
 
     nautilus_view_item_set_item_ui (item, gtk_list_item_get_child (listitem));
 }
@@ -936,7 +934,7 @@ unbind_name_cell (GtkSignalListItemFactory *factory,
 {
     NautilusViewItem *item;
 
-    item = NAUTILUS_VIEW_ITEM (gtk_list_item_get_item (listitem));
+    item = listitem_get_view_item (listitem);
     g_return_if_fail (NAUTILUS_IS_VIEW_ITEM (item));
 
     nautilus_view_item_set_item_ui (item, NULL);
