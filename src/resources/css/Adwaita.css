@@ -78,6 +78,18 @@
   opacity: 1;
 }
 
+/* Search bar */
+
+#NautilusQueryEditor > * {
+  margin-top: 5px;
+  margin-bottom: 5px;
+}
+
+#NautilusQueryEditor > menubutton > button {
+  min-width: 24px;
+  min-height: 24px;
+}
+
 /* Floating status bar */
 .floating-bar {
   padding: 3px;
