@@ -85,9 +85,16 @@
   margin-bottom: 5px;
 }
 
+#NautilusQueryEditorTag > button,
 #NautilusQueryEditor > menubutton > button {
   min-width: 24px;
   min-height: 24px;
+  margin: 0px;
+}
+
+#NautilusQueryEditorTag {
+  background-color: alpha(currentColor, 0.1);
+  border-radius: 100px;
 }
 
 /* Floating status bar */
