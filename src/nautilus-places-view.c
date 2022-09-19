@@ -392,20 +392,14 @@ nautilus_places_view_init (NautilusPlacesView *self)
     gtk_widget_show (priv->places_view);
     gtk_box_append (GTK_BOX (self), priv->places_view);
 
-    g_signal_connect_swapped (priv->places_view,
-                              "notify::loading",
-                              G_CALLBACK (loading_cb),
-                              self);
+    g_signal_connect_object (priv->places_view, "notify::loading",
+                             G_CALLBACK (loading_cb), self, G_CONNECT_SWAPPED);
 
-    g_signal_connect_swapped (priv->places_view,
-                              "open-location",
-                              G_CALLBACK (open_location_cb),
-                              self);
+    g_signal_connect_object (priv->places_view, "open-location",
+                             G_CALLBACK (open_location_cb), self, G_CONNECT_SWAPPED);
 
-    g_signal_connect_swapped (priv->places_view,
-                              "show-error-message",
-                              G_CALLBACK (show_error_message_cb),
-                              self);
+    g_signal_connect_object (priv->places_view, "show-error-message",
+                             G_CALLBACK (show_error_message_cb), self, G_CONNECT_SWAPPED);
 }
 
 NautilusPlacesView *
