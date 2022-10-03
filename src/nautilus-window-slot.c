@@ -147,7 +147,7 @@ struct _NautilusWindowSlot
     GList *selection;
 };
 
-static const char *view_type_attr = "xattr::nautilus_view_id";
+static const char *view_type_attr = "xattr::org.gnome.nautilus.view_id";
 
 G_DEFINE_TYPE (NautilusWindowSlot, nautilus_window_slot, GTK_TYPE_BOX);
 
@@ -988,7 +988,9 @@ change_files_view_mode (NautilusWindowSlot *self,
             if (view_id_attr)
             {
                 guint8 id = view_id_attr[0] - '0';
-                view_id = (guint) id;
+                gint restored_view_id = (guint) id;
+                if (restored_view_id >= NAUTILUS_VIEW_LIST_ID && restored_view_id <= NAUTILUS_VIEW_GRID_ID)
+                    view_id = restored_view_id;
             }
             g_object_unref(ginfo);
         }
@@ -999,12 +1001,14 @@ change_files_view_mode (NautilusWindowSlot *self,
     }
 
     if (do_save)
-    {      
-        g_assert(view_id <= 1);
+    {
+        g_assert(view_id >= NAUTILUS_VIEW_LIST_ID && view_id <= NAUTILUS_VIEW_GRID_ID);
+        char view_id_as_str[4];
+        snprintf(view_id_as_str, 4, "%d", view_id);
         g_file_set_attribute_string(
             nautilus_window_slot_get_location(self),
             view_type_attr,
-            view_id? "1": "0",
+            view_id_as_str,
             G_FILE_QUERY_INFO_NONE,
             NULL,
             NULL
