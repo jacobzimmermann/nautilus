@@ -988,7 +988,7 @@ change_files_view_mode (NautilusWindowSlot *self,
             if (view_id_attr)
             {
                 guint8 id = view_id_attr[0] - '0';
-                gint restored_view_id = (guint) id;
+                guint restored_view_id = (guint) id;
                 if (restored_view_id >= NAUTILUS_VIEW_LIST_ID && restored_view_id <= NAUTILUS_VIEW_GRID_ID)
                     view_id = restored_view_id;
             }
