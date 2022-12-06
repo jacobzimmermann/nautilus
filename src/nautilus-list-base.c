@@ -82,19 +82,19 @@ static const SortConstants sorts_constants[] =
     },
     {
         NAUTILUS_FILE_SORT_BY_MTIME,
-        "modification date",
+        "date_modified",
     },
     {
         NAUTILUS_FILE_SORT_BY_ATIME,
-        "access date",
+        "date_accessed",
     },
     {
         NAUTILUS_FILE_SORT_BY_BTIME,
-        "creation date",
+        "date_created",
     },
     {
         NAUTILUS_FILE_SORT_BY_TRASHED_TIME,
-        "trashed",
+        "trashed_on",
     },
     {
         NAUTILUS_FILE_SORT_BY_SEARCH_RELEVANCE,
@@ -1135,6 +1135,8 @@ real_get_selection (NautilusFilesView *files_view)
                                          g_object_ref (nautilus_view_item_get_file (item)));
     }
 
+    selected_files = g_list_reverse (selected_files);
+
     return selected_files;
 }
 
@@ -1299,30 +1301,6 @@ real_reveal_selection (NautilusFilesView *files_view)
     nautilus_list_base_scroll_to_item (self, get_first_selected_item (self));
 }
 
-static int
-real_compare_files (NautilusFilesView *files_view,
-                    NautilusFile      *file1,
-                    NautilusFile      *file2)
-{
-    NautilusListBase *self = NAUTILUS_LIST_BASE (files_view);
-    NautilusListBasePrivate *priv = nautilus_list_base_get_instance_private (self);
-    GtkSorter *sorter;
-    g_autoptr (NautilusViewItem) item1 = NULL;
-    g_autoptr (NautilusViewItem) item2 = NULL;
-
-    sorter = nautilus_view_model_get_sorter (priv->model);
-    if (sorter == NULL)
-    {
-        return 0;
-    }
-
-    /* Generate fake model items for sorter use only. */
-    item1 = nautilus_view_item_new (file1, NAUTILUS_GRID_ICON_SIZE_SMALL);
-    item2 = nautilus_view_item_new (file2, NAUTILUS_GRID_ICON_SIZE_SMALL);
-
-    return gtk_sorter_compare (sorter, item1, item2);
-}
-
 static void
 on_clipboard_contents_received (GObject      *source_object,
                                 GAsyncResult *res,
@@ -1389,12 +1367,13 @@ get_first_visible_item (NautilusListBase *self)
 {
     NautilusListBasePrivate *priv = nautilus_list_base_get_instance_private (self);
     guint n_items;
-    gdouble scrolled_y;
     GtkWidget *view_ui;
+    GtkBorder border = {0};
 
     n_items = g_list_model_get_n_items (G_LIST_MODEL (priv->model));
-    scrolled_y = gtk_adjustment_get_value (priv->vadjustment);
     view_ui = nautilus_list_base_get_view_ui (self);
+    gtk_scrollable_get_border (GTK_SCROLLABLE (view_ui), &border);
+
     for (guint i = 0; i < n_items; i++)
     {
         g_autoptr (NautilusViewItem) item = NULL;
@@ -1402,13 +1381,15 @@ get_first_visible_item (NautilusListBase *self)
 
         item = get_view_item (G_LIST_MODEL (priv->model), i);
         item_ui = nautilus_view_item_get_item_ui (item);
-        if (item_ui != NULL)
+        if (item_ui != NULL && gtk_widget_get_mapped (item_ui))
         {
+            GtkWidget *list_item_widget = gtk_widget_get_parent (item_ui);
+            gdouble h = gtk_widget_get_allocated_height (list_item_widget);
             gdouble y;
 
-            gtk_widget_translate_coordinates (item_ui, view_ui,
-                                              0, 0, NULL, &y);
-            if (gtk_widget_is_visible (item_ui) && y >= scrolled_y)
+            gtk_widget_translate_coordinates (list_item_widget, GTK_WIDGET (self),
+                                              0, h, NULL, &y);
+            if (y >= border.top)
             {
                 return i;
             }
@@ -1458,13 +1439,15 @@ scroll_to_file_on_idle (ScrollToFileData *data)
     NautilusViewItem *item;
     guint i;
 
+    priv->scroll_to_file_handle_id = 0;
+
     file = nautilus_file_get_existing_by_uri (data->uri);
     item = nautilus_view_model_get_item_from_file (priv->model, file);
-    i = nautilus_view_model_get_index (priv->model, item);
+    g_return_val_if_fail (item != NULL, G_SOURCE_REMOVE);
 
+    i = nautilus_view_model_get_index (priv->model, item);
     nautilus_list_base_scroll_to_item (self, i);
 
-    priv->scroll_to_file_handle_id = 0;
     return G_SOURCE_REMOVE;
 }
 
@@ -1587,17 +1570,37 @@ real_preview_selection_event (NautilusFilesView *files_view,
                               GtkDirectionType   direction)
 {
     NautilusListBase *self = NAUTILUS_LIST_BASE (files_view);
-    GtkMovementStep step;
-    gint count;
-    gboolean handled;
+    NautilusListBasePrivate *priv = nautilus_list_base_get_instance_private (self);
+    guint i;
+    gboolean rtl = (gtk_widget_get_direction (GTK_WIDGET (self)) == GTK_TEXT_DIR_RTL);
 
-    step = (direction == GTK_DIR_UP || direction == GTK_DIR_DOWN) ?
-           GTK_MOVEMENT_DISPLAY_LINES : GTK_MOVEMENT_VISUAL_POSITIONS;
-    count = (direction == GTK_DIR_RIGHT || direction == GTK_DIR_DOWN) ?
-            1 : -1;
+    i = get_first_selected_item (self);
+    if (direction == GTK_DIR_UP ||
+        direction == (rtl ? GTK_DIR_RIGHT : GTK_DIR_LEFT))
+    {
+        if (i == 0)
+        {
+            /* We are at the start of the list, can't move up. */
+            gtk_widget_error_bell (GTK_WIDGET (self));
+            return;
+        }
 
-    g_signal_emit_by_name (nautilus_list_base_get_view_ui (self),
-                           "move-cursor", step, count, &handled);
+        i--;
+    }
+    else
+    {
+        i++;
+
+        if (i >= g_list_model_get_n_items (G_LIST_MODEL (priv->model)))
+        {
+            /* We are at the end of the list, can't move down. */
+            gtk_widget_error_bell (GTK_WIDGET (self));
+            return;
+        }
+    }
+
+    gtk_selection_model_select_item (GTK_SELECTION_MODEL (priv->model), i, TRUE);
+    set_focus_item (self, g_list_model_get_item (G_LIST_MODEL (priv->model), i));
 }
 
 static void
@@ -1737,7 +1740,6 @@ nautilus_list_base_class_init (NautilusListBaseClass *klass)
     files_view_class->select_all = real_select_all;
     files_view_class->set_selection = real_set_selection;
     files_view_class->invert_selection = real_invert_selection;
-    files_view_class->compare_files = real_compare_files;
     files_view_class->end_file_changes = real_end_file_changes;
     files_view_class->end_loading = real_end_loading;
     files_view_class->get_first_visible_file = real_get_first_visible_file;

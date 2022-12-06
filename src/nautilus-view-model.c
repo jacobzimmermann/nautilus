@@ -86,16 +86,7 @@ nautilus_view_model_set_selection (GtkSelectionModel *model,
     gboolean res;
 
     res = gtk_selection_model_set_selection (selection_model, selected, mask);
-    if (res)
-    {
-        guint min = gtk_bitset_get_minimum (mask);
-        guint max = gtk_bitset_get_maximum (mask);
 
-        if (min <= max)
-        {
-            gtk_selection_model_selection_changed (selection_model, min, max - min + 1);
-        }
-    }
     return res;
 }
 
@@ -301,9 +292,12 @@ nautilus_view_model_set_sorter (NautilusViewModel *self,
         g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_SORTER]);
     }
 
-    self->sorter_changed_id = g_signal_connect (self->sorter, "changed",
-                                                G_CALLBACK (on_sorter_changed), self);
-    g_list_store_sort (self->internal_model, compare_data_func, self);
+    if (self->sorter != NULL)
+    {
+        self->sorter_changed_id = g_signal_connect (self->sorter, "changed",
+                                                    G_CALLBACK (on_sorter_changed), self);
+        g_list_store_sort (self->internal_model, compare_data_func, self);
+    }
 }
 
 GQueue *
@@ -390,6 +384,10 @@ nautilus_view_model_add_items (NautilusViewModel *self,
     g_autofree gpointer *array = NULL;
     GList *l;
     int i = 0;
+
+    /* Sort items before adding them to the internal model. This ensures that
+     * the first sorted item is become the initial focus and scroll anchor. */
+    g_queue_sort (items, compare_data_func, self);
 
     array = g_malloc_n (g_queue_get_length (items),
                         sizeof (NautilusViewItem *));

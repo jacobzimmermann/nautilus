@@ -133,7 +133,6 @@ struct _NautilusPropertiesWindow
     GtkWidget *permissions_value_label;
 
     GtkWidget *extension_models_list_box;
-    GList *extensions_properties_models;
 
     /* Permissions page */
 
@@ -926,7 +925,8 @@ create_extension_group_row (NautilusPropertiesItem   *item,
     gtk_list_box_row_set_activatable (GTK_LIST_BOX_ROW (row), FALSE);
     adw_action_row_add_prefix (ADW_ACTION_ROW (row), box);
 
-    gtk_widget_set_valign (box, GTK_ALIGN_CENTER);
+    gtk_widget_set_margin_top (box, 7);
+    gtk_widget_set_margin_bottom (box, 7);
     gtk_box_append (GTK_BOX (box), name_label);
     gtk_box_append (GTK_BOX (box), value_label);
 
@@ -938,7 +938,8 @@ create_extension_group_row (NautilusPropertiesItem   *item,
 
     g_object_bind_property (item, "value", value_label, "label", G_BINDING_SYNC_CREATE);
     gtk_widget_set_halign (value_label, GTK_ALIGN_START);
-    gtk_label_set_ellipsize (GTK_LABEL (value_label), PANGO_ELLIPSIZE_END);
+    gtk_label_set_wrap (GTK_LABEL (value_label), TRUE);
+    gtk_label_set_wrap_mode (GTK_LABEL (value_label), PANGO_WRAP_WORD_CHAR);
     gtk_label_set_selectable (GTK_LABEL (value_label), TRUE);
 
     return row;
@@ -3666,8 +3667,8 @@ setup_permissions_page (NautilusPropertiesWindow *self)
 static void
 refresh_extension_model_pages (NautilusPropertiesWindow *self)
 {
-    GListStore *extensions_list = g_list_store_new (NAUTILUS_TYPE_PROPERTIES_MODEL);
-    GList *all_models = NULL;
+    g_autoptr (GListStore) extensions_list = g_list_store_new (NAUTILUS_TYPE_PROPERTIES_MODEL);
+    g_autolist (NautilusPropertiesModel) all_models = NULL;
     g_autolist (GObject) providers =
         nautilus_module_get_extensions_for_type (NAUTILUS_TYPE_PROPERTIES_MODEL_PROVIDER);
 
@@ -3677,10 +3678,6 @@ refresh_extension_model_pages (NautilusPropertiesWindow *self)
 
         all_models = g_list_concat (all_models, models);
     }
-
-    g_clear_list (&self->extensions_properties_models, g_object_unref);
-    self->extensions_properties_models = all_models;
-
 
     for (GList *l = all_models; l != NULL; l = l->next)
     {
@@ -4146,8 +4143,6 @@ real_dispose (GObject *object)
     g_clear_list (&self->target_files, (GDestroyNotify) nautilus_file_unref);
 
     g_clear_list (&self->changed_files, (GDestroyNotify) nautilus_file_unref);
-
-    g_clear_list (&self->extensions_properties_models, g_object_unref);
 
     g_clear_handle_id (&self->deep_count_spinner_timeout_id, g_source_remove);
 

@@ -183,14 +183,6 @@ struct _NautilusFilesViewClass {
 
         void    (* update_actions_state)     (NautilusFilesView *view);
 
-        /* sort_files is a function pointer that subclasses can override
-         * to provide a sorting order to determine which files should be
-         * presented when only a partial list is provided.
-         */
-        int     (* compare_files)            (NautilusFilesView *view,
-                                              NautilusFile      *a,
-                                              NautilusFile      *b);
-
         /* is_empty is a function pointer that subclasses must
          * override to report whether the view contains any items.
          */
@@ -252,8 +244,6 @@ void                nautilus_files_view_activate_files                   (Nautil
 void                nautilus_files_view_activate_file                    (NautilusFilesView *view,
                                                                           NautilusFile      *file,
                                                                           NautilusOpenFlags  flags);
-void                nautilus_files_view_start_batching_selection_changes (NautilusFilesView *view);
-void                nautilus_files_view_stop_batching_selection_changes  (NautilusFilesView *view);
 void                nautilus_files_view_notify_selection_changed         (NautilusFilesView *view);
 NautilusDirectory  *nautilus_files_view_get_model                        (NautilusFilesView *view);
 NautilusFile       *nautilus_files_view_get_directory_as_file            (NautilusFilesView *view);

@@ -227,9 +227,6 @@ typedef struct
     gboolean show_hidden_files;
     gboolean ignore_hidden_file_preferences;
 
-    gboolean batching_selection_level;
-    gboolean selection_changed_while_batched;
-
     gboolean selection_was_removed;
 
     gboolean metadata_for_directory_as_file_pending;
@@ -3206,6 +3203,46 @@ slot_active_changed (NautilusWindowSlot *slot,
 }
 
 static gboolean
+nautilus_files_view_focus (GtkWidget        *widget,
+                           GtkDirectionType  direction)
+{
+    NautilusFilesView *view;
+    NautilusFilesViewPrivate *priv;
+    GtkWidget *focus;
+    GtkWidget *main_child;
+
+    view = NAUTILUS_FILES_VIEW (widget);
+    priv = nautilus_files_view_get_instance_private (view);
+    focus = gtk_window_get_focus (GTK_WINDOW (gtk_widget_get_root (widget)));
+
+    /* In general, we want to forward focus movement to the main child. However,
+     * we must chain up for default focus handling in case the focus in in any
+     * other child, e.g. a popover. */
+    if (gtk_widget_is_ancestor (focus, widget) &&
+        !gtk_widget_is_ancestor (focus, priv->scrolled_window))
+    {
+        if (GTK_WIDGET_CLASS (nautilus_files_view_parent_class)->focus (widget, direction))
+        {
+            return TRUE;
+        }
+        else
+        {
+            /* The default handler returns FALSE if a popover has just been
+             * closed, because it moves the focus forward. But we want to move
+             * focus back into the view's main child. So, fall through. */
+        }
+    }
+
+    main_child = gtk_scrolled_window_get_child (GTK_SCROLLED_WINDOW (priv->scrolled_window));
+    if (main_child != NULL)
+    {
+        return gtk_widget_child_focus (main_child, direction);
+    }
+
+    return FALSE;
+}
+
+static gboolean
 nautilus_files_view_grab_focus (GtkWidget *widget)
 {
     /* focus the child of the scrolled window if it exists */
@@ -4085,38 +4122,6 @@ ready_to_load (NautilusFile *file)
                                          NAUTILUS_FILE_ATTRIBUTES_FOR_ICON);
 }
 
-static int
-compare_files_cover (gconstpointer a,
-                     gconstpointer b,
-                     gpointer      callback_data)
-{
-    const FileAndDirectory *fad1, *fad2;
-    NautilusFilesView *view;
-
-    view = callback_data;
-    fad1 = a;
-    fad2 = b;
-
-    if (fad1->directory < fad2->directory)
-    {
-        return -1;
-    }
-    else if (fad1->directory > fad2->directory)
-    {
-        return 1;
-    }
-    else
-    {
-        return NAUTILUS_FILES_VIEW_CLASS (G_OBJECT_GET_CLASS (view))->compare_files (view, fad1->file, fad2->file);
-    }
-}
-static void
-sort_files (NautilusFilesView  *view,
-            GList             **list)
-{
-    *list = g_list_sort_with_data (*list, compare_files_cover, view);
-}
-
 /* Go through all the new added and changed files.
  * Put any that are not ready to load in the non_ready_files hash table.
  * Add all the rest to the old_added_files and old_changed_files lists.
@@ -4203,20 +4208,14 @@ process_new_files (NautilusFilesView *view)
         }
     }
 
-    /* If any files were added to old_added_files, then resort it. */
     if (old_added_files != priv->old_added_files)
     {
         priv->old_added_files = old_added_files;
-        sort_files (view, &priv->old_added_files);
     }
 
-    /* Resort old_changed_files too, since file attributes
-     * relevant to sorting could have changed.
-     */
     if (old_changed_files != priv->old_changed_files)
     {
         priv->old_changed_files = old_changed_files;
-        sort_files (view, &priv->old_changed_files);
     }
 }
 
@@ -4462,9 +4461,13 @@ remove_update_context_menus_timeout_callback (NautilusFilesView *view)
 static void
 update_context_menus_if_pending (NautilusFilesView *view)
 {
-    remove_update_context_menus_timeout_callback (view);
+    NautilusFilesViewPrivate *priv = nautilus_files_view_get_instance_private (view);
 
-    nautilus_files_view_update_context_menus (view);
+    if (priv->update_context_menus_timeout_id != 0)
+    {
+        remove_update_context_menus_timeout_callback (view);
+        nautilus_files_view_update_context_menus (view);
+    }
 }
 
 static gboolean
@@ -7370,8 +7373,8 @@ on_clipboard_owner_changed (GdkClipboard *clipboard,
 {
     NautilusFilesView *self = NAUTILUS_FILES_VIEW (user_data);
 
-    /* Update paste menu item */
-    nautilus_files_view_update_context_menus (self);
+    /* We need to update paste and paste-like actions */
+    nautilus_files_view_update_actions_state (self);
 }
 
 static gboolean
@@ -7546,9 +7549,7 @@ real_update_actions_state (NautilusFilesView *view)
     can_copy_files = selection_count != 0;
     can_move_files = can_delete_files && !selection_contains_recent &&
                      !selection_contains_starred;
-    can_paste_files_into = (!selection_contains_recent &&
-                            !selection_contains_starred &&
-                            selection_count == 1 &&
+    can_paste_files_into = (selection_count == 1 &&
                             can_paste_into_file (NAUTILUS_FILE (selection->data)));
     can_extract_files = selection_count != 0 &&
                         can_extract_all (selection);
@@ -7825,8 +7826,7 @@ real_update_actions_state (NautilusFilesView *view)
     action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group),
                                          "paste-into");
     g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
-                                 !selection_is_read_only && !selection_contains_recent &&
-                                 can_paste_files_into && !selection_contains_starred);
+                                 can_paste_files_into);
 
     action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group),
                                          "console");
@@ -7996,22 +7996,22 @@ update_selection_menu (NautilusFilesView *view,
 
         file = NAUTILUS_FILE (l->data);
 
-        if (!nautilus_mime_file_extracts (file))
+        if (show_extract && !nautilus_mime_file_extracts (file))
         {
             show_extract = FALSE;
         }
 
-        if (!nautilus_mime_file_opens_in_external_app (file))
+        if (show_app && !nautilus_mime_file_opens_in_external_app (file))
         {
             show_app = FALSE;
         }
 
-        if (!nautilus_mime_file_launches (file))
+        if (show_run && !nautilus_mime_file_launches (file))
         {
             show_run = FALSE;
         }
 
-        if (!nautilus_file_opens_in_view (file))
+        if (item_opens_in_view && !nautilus_file_opens_in_view (file))
         {
             item_opens_in_view = FALSE;
         }
@@ -8599,21 +8599,7 @@ nautilus_files_view_notify_selection_changed (NautilusFilesView *view)
                           view);
     }
 
-    if (priv->batching_selection_level != 0)
-    {
-        priv->selection_changed_while_batched = TRUE;
-    }
-    else
-    {
-        /* Here is the work we do only when we're not
-         * batching selection changes. In other words, it's the slower
-         * stuff that we don't want to slow down selection techniques
-         * such as rubberband-selecting in icon view.
-         */
-
-        /* Schedule an update of menu item states to match selection */
-        schedule_update_context_menus (view);
-    }
+    schedule_update_context_menus (view);
 }
 
 static void
@@ -9105,36 +9091,6 @@ nautilus_files_view_trash_state_changed_callback (NautilusTrashMonitor *trash_mo
     schedule_update_context_menus (view);
 }
 
-void
-nautilus_files_view_start_batching_selection_changes (NautilusFilesView *view)
-{
-    NautilusFilesViewPrivate *priv;
-
-    g_return_if_fail (NAUTILUS_IS_FILES_VIEW (view));
-    priv = nautilus_files_view_get_instance_private (view);
-
-    ++priv->batching_selection_level;
-    priv->selection_changed_while_batched = FALSE;
-}
-
-void
-nautilus_files_view_stop_batching_selection_changes (NautilusFilesView *view)
-{
-    NautilusFilesViewPrivate *priv;
-
-    g_return_if_fail (NAUTILUS_IS_FILES_VIEW (view));
-    priv = nautilus_files_view_get_instance_private (view);
-    g_return_if_fail (priv->batching_selection_level > 0);
-
-    if (--priv->batching_selection_level == 0)
-    {
-        if (priv->selection_changed_while_batched)
-        {
-            nautilus_files_view_notify_selection_changed (view);
-        }
-    }
-}
-
 static void
 nautilus_files_view_get_property (GObject    *object,
                                   guint       prop_id,
@@ -9502,6 +9458,7 @@ nautilus_files_view_class_init (NautilusFilesViewClass *klass)
     oclass->get_property = nautilus_files_view_get_property;
     oclass->set_property = nautilus_files_view_set_property;
 
+    widget_class->focus = nautilus_files_view_focus;
     widget_class->grab_focus = nautilus_files_view_grab_focus;
 
 
