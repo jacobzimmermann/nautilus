@@ -309,6 +309,13 @@ nautilus_window_slot_get_view_for_location (NautilusWindowSlot *self,
     {
         view_id = g_settings_get_enum (nautilus_preferences, NAUTILUS_PREFERENCES_DEFAULT_FOLDER_VIEWER);
     }
+    if (view_id == NAUTILUS_VIEW_INVALID_ID)
+    {
+        g_warning ("Invalid value stored for 'default-folder-viewer' key for "
+                   "the 'org.gnome.nautilus.preferences' schemas. Installed "
+                   "schemas may be outdated. Falling back to 'list-view'.");
+        view_id = NAUTILUS_VIEW_LIST_ID;
+    }
 
     /* Try to reuse the current view */
     if (nautilus_window_slot_content_view_matches (self, view_id))
@@ -600,6 +607,7 @@ nautilus_window_slot_search (NautilusWindowSlot *self,
     {
         nautilus_window_slot_set_search_visible (self, TRUE);
         nautilus_query_editor_set_query (self->query_editor, query);
+        nautilus_view_set_search_query (view, query);
     }
     else
     {
@@ -1818,7 +1826,7 @@ handle_regular_file_if_needed (NautilusWindowSlot *self,
         g_free (self->pending_scroll_to);
 
         self->pending_location = nautilus_file_get_parent_location (file);
-        if (nautilus_file_is_archive (file))
+        if (nautilus_mime_file_extracts (file))
         {
             self->pending_file_to_activate = nautilus_file_ref (file);
         }

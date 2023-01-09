@@ -5156,22 +5156,6 @@ nautilus_file_get_thumbnail_icon (NautilusFile          *file,
     return icon;
 }
 
-static gboolean
-nautilus_thumbnail_is_limited_by_zoom (int size,
-                                       int scale)
-{
-    int zoom_level;
-
-    zoom_level = size * scale;
-
-    if (zoom_level < NAUTILUS_THUMBNAIL_MINIMUM_ICON_SIZE)
-    {
-        return TRUE;
-    }
-
-    return FALSE;
-}
-
 NautilusIconInfo *
 nautilus_file_get_icon (NautilusFile          *file,
                         int                    size,
@@ -5201,7 +5185,7 @@ nautilus_file_get_icon (NautilusFile          *file,
 
     if (flags & NAUTILUS_FILE_ICON_FLAGS_USE_THUMBNAILS &&
         nautilus_file_should_show_thumbnail (file) &&
-        !nautilus_thumbnail_is_limited_by_zoom (size, scale))
+        size >= NAUTILUS_THUMBNAIL_MINIMUM_ICON_SIZE)
     {
         icon = nautilus_file_get_thumbnail_icon (file, size, scale, flags);
     }
@@ -6850,7 +6834,7 @@ nautilus_file_get_size_as_string_with_real_size (NautilusFile *file)
         return NULL;
     }
 
-    size_str = g_strdup_printf ("%" G_GOFFSET_FORMAT, file->details->size);
+    size_str = g_strdup_printf ("%'" G_GOFFSET_FORMAT, file->details->size);
     return g_strdup_printf (ngettext ("%s byte",
                                       "%s bytes",
                                       file->details->size),

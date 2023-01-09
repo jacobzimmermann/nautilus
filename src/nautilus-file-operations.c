@@ -1022,6 +1022,11 @@ get_basename (GFile *file)
     if (name == NULL)
     {
         basename = g_file_get_basename (file);
+        if (basename == NULL)
+        {
+            return g_strdup (_("unknown"));
+        }
+
         if (g_utf8_validate (basename, -1, NULL))
         {
             name = basename;
@@ -1321,11 +1326,6 @@ simple_dialog_cb (GtkDialog *dialog,
                   gpointer   user_data)
 {
     RunSimpleDialogData *data = user_data;
-
-    if ((response_id == GTK_RESPONSE_NONE || response_id == GTK_RESPONSE_DELETE_EVENT) && data->ignore_close_box)
-    {
-        return;
-    }
 
     gtk_window_destroy (GTK_WINDOW (dialog));
 
@@ -4308,16 +4308,15 @@ make_file_name_valid_for_dest_fs (char       *filename,
 {
     if (dest_fs_type != NULL && filename != NULL)
     {
-        if (!strcmp (dest_fs_type, "fat") ||
-            !strcmp (dest_fs_type, "vfat") ||
-            /* The fuseblk filesystem type could be of any type
+        if (/* The fuseblk filesystem type could be of any type
              * in theory, but in practice is usually NTFS or exFAT.
              * This assumption is a pragmatic way to solve
              * https://gitlab.gnome.org/GNOME/nautilus/-/issues/1343 */
             !strcmp (dest_fs_type, "fuse") ||
             !strcmp (dest_fs_type, "ntfs") ||
+            /* msdos is returned for fat filesystems */
             !strcmp (dest_fs_type, "msdos") ||
-            !strcmp (dest_fs_type, "msdosfs"))
+            !strcmp (dest_fs_type, "exfat"))
         {
             gboolean ret;
             int i, old_len;
@@ -4385,6 +4384,7 @@ get_unique_target_file (GFile      *src,
     if (dest == NULL)
     {
         basename = g_file_get_basename (src);
+        g_assert (basename == NULL);
 
         if (g_utf8_validate (basename, -1, NULL))
         {
@@ -5583,7 +5583,7 @@ retry:
         {
             dest_uri = g_file_get_uri (dest);
 
-            g_hash_table_replace (debuting_files, g_object_ref (dest), GINT_TO_POINTER (TRUE));
+            g_hash_table_replace (debuting_files, g_object_ref (dest), GINT_TO_POINTER (!overwrite));
         }
         if (copy_job->is_move)
         {

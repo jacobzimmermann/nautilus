@@ -383,19 +383,23 @@ action_go_to_tab (GSimpleAction *action,
 }
 
 static void
+prompt_for_location (NautilusWindow *window,
+                     const char     *path)
+{
+    GtkWidget *entry;
+
+    entry = nautilus_window_ensure_location_entry (window);
+    nautilus_location_entry_set_special_text (NAUTILUS_LOCATION_ENTRY (entry),
+                                              path);
+    gtk_editable_set_position (GTK_EDITABLE (entry), -1);
+}
+
+static void
 action_prompt_for_location_root (GSimpleAction *action,
                                  GVariant      *state,
                                  gpointer       user_data)
 {
-    NautilusWindow *window = user_data;
-    GFile *location;
-    GtkWidget *entry;
-
-    location = g_file_new_for_path ("/");
-    entry = nautilus_window_ensure_location_entry (window);
-    nautilus_location_entry_set_location (NAUTILUS_LOCATION_ENTRY (entry), location);
-
-    g_object_unref (location);
+    prompt_for_location (NAUTILUS_WINDOW (user_data), "/");
 }
 
 static void
@@ -403,12 +407,7 @@ action_prompt_for_location_home (GSimpleAction *action,
                                  GVariant      *state,
                                  gpointer       user_data)
 {
-    GtkWidget *entry;
-
-    entry = nautilus_window_ensure_location_entry (NAUTILUS_WINDOW (user_data));
-    nautilus_location_entry_set_special_text (NAUTILUS_LOCATION_ENTRY (entry),
-                                              "~");
-    gtk_editable_set_position (GTK_EDITABLE (entry), -1);
+    prompt_for_location (NAUTILUS_WINDOW (user_data), "~");
 }
 
 static void
@@ -1574,9 +1573,10 @@ nautilus_window_constructed (GObject *self)
      * some actions trigger UI widgets to show/hide. */
     nautilus_window_initialize_actions (window);
 
-    window->bookmarks_id =
-        g_signal_connect_swapped (nautilus_application_get_bookmarks (application), "changed",
-                                  G_CALLBACK (nautilus_window_sync_bookmarks), window);
+    window->bookmarks_id = g_signal_connect_object (nautilus_application_get_bookmarks (application),
+                                                    "changed",
+                                                    G_CALLBACK (nautilus_window_sync_bookmarks),
+                                                    window, G_CONNECT_SWAPPED);
 
     nautilus_toolbar_on_window_constructed (NAUTILUS_TOOLBAR (window->toolbar));
 
@@ -1671,8 +1671,12 @@ nautilus_window_close (NautilusWindow *window)
      * Usually, reference cycles are resolved in dispose(), but GTK removes the
      * controllers in finalize(), so our only option is to manually remove it
      * here before starting the destruction of the window. */
-    gtk_widget_remove_controller (GTK_WIDGET (window),
-                                  GTK_EVENT_CONTROLLER (window->pad_controller));
+    if (window->pad_controller != NULL)
+    {
+        gtk_widget_remove_controller (GTK_WIDGET (window),
+                                      GTK_EVENT_CONTROLLER (window->pad_controller));
+        g_clear_weak_pointer (&window->pad_controller);
+    }
 
     gtk_window_destroy (GTK_WINDOW (window));
 }
@@ -2063,6 +2067,7 @@ nautilus_window_init (NautilusWindow *window)
 {
     GtkWindowGroup *window_group;
     GtkEventController *controller;
+    GtkPadController *pad_controller;
 
     g_type_ensure (NAUTILUS_TYPE_TOOLBAR);
     g_type_ensure (NAUTILUS_TYPE_GTK_PLACES_SIDEBAR);
@@ -2079,7 +2084,7 @@ nautilus_window_init (NautilusWindow *window)
                              window,
                              G_CONNECT_SWAPPED);
 
-    g_signal_connect (window, "notify::is-maximized",
+    g_signal_connect (window, "notify::maximized",
                       G_CALLBACK (on_is_maximized_changed), NULL);
 
     window->slots = NULL;
@@ -2097,8 +2102,11 @@ nautilus_window_init (NautilusWindow *window)
     /* Attention: this creates a reference cycle: the pad controller owns a
      * reference to the window (as an action group) and the window (as a widget)
      * owns a reference to the pad controller. To break this, we must remove
-     * the controller from the window before destroying the window. */
-    window->pad_controller = gtk_pad_controller_new (G_ACTION_GROUP (window), NULL);
+     * the controller from the window before destroying the window. But we need
+     * to know the controller is still alive before trying to remove it, so a
+     * weak reference is added. */
+    pad_controller = gtk_pad_controller_new (G_ACTION_GROUP (window), NULL);
+    g_set_weak_pointer (&window->pad_controller, pad_controller);
     gtk_pad_controller_set_action_entries (window->pad_controller,
                                            pad_actions, G_N_ELEMENTS (pad_actions));
     gtk_widget_add_controller (GTK_WIDGET (window),

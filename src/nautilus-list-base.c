@@ -582,7 +582,7 @@ on_item_drag_prepare (GtkDragSource *source,
     for (GList *l = selection; l != NULL; l = l->next)
     {
         /* Convert to GTK_TYPE_FILE_LIST, which is assumed to be a GSList<GFile>. */
-        file_list = g_slist_prepend (file_list, nautilus_file_get_location (l->data));
+        file_list = g_slist_prepend (file_list, nautilus_file_get_activation_location (l->data));
 
         if (!nautilus_file_can_delete (l->data))
         {
@@ -623,6 +623,13 @@ hover_timer (gpointer user_data)
     g_autofree gchar *uri = NULL;
 
     priv->hover_timer_id = 0;
+
+    if (priv->drag_item_action == 0)
+    {
+        /* If we aren't able to dropped don't change the location. This stops
+         * drops onto themselves, and another unnecessary drops. */
+        return G_SOURCE_REMOVE;
+    }
 
     uri = nautilus_file_get_uri (nautilus_view_item_get_file (item));
     nautilus_files_view_handle_hover (NAUTILUS_FILES_VIEW (self), uri);
@@ -851,6 +858,7 @@ on_item_drop (GtkDropTarget *target,
 {
     NautilusViewCell *cell = user_data;
     g_autoptr (NautilusListBase) self = nautilus_view_cell_get_view (cell);
+    NautilusListBasePrivate *priv = nautilus_list_base_get_instance_private (self);
     g_autoptr (NautilusViewItem) item = nautilus_view_cell_get_item (cell);
     GdkDragAction actions;
     GFile *target_location;
@@ -865,9 +873,12 @@ on_item_drop (GtkDropTarget *target,
          * is merged.  Without this fix, the preferred action isn't set correctly.
          * https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/4982 */
         GdkDrag *drag = gdk_drop_get_drag (gtk_drop_target_get_current_drop (target));
-        actions = gdk_drag_get_selected_action (drag);
+        actions = drag != NULL ? gdk_drag_get_selected_action (drag) : GDK_ACTION_COPY;
     }
     #endif
+
+    /* In x11 the leave signal isn't emitted on a drop so we need to clear the timeout */
+    g_clear_handle_id (&priv->hover_timer_id, g_source_remove);
 
     real_perform_drop (self, value, actions, target_location);
 
@@ -960,7 +971,7 @@ on_view_drop (GtkDropTarget *target,
          * is merged.  Without this fix, the preferred action isn't set correctly.
          * https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/4982 */
         GdkDrag *drag = gdk_drop_get_drag (gtk_drop_target_get_current_drop (target));
-        actions = gdk_drag_get_selected_action (drag);
+        actions = drag != NULL ? gdk_drag_get_selected_action (drag) : GDK_ACTION_COPY;
     }
     #endif
 
@@ -1215,17 +1226,20 @@ real_set_selection (NautilusFilesView *files_view,
     g_autoptr (GQueue) selection_files = NULL;
     g_autoptr (GQueue) selection_items = NULL;
     g_autoptr (GtkBitset) update_set = NULL;
-    g_autoptr (GtkBitset) selection_set = NULL;
+    g_autoptr (GtkBitset) new_selection_set = NULL;
+    g_autoptr (GtkBitset) old_selection_set = NULL;
 
-    update_set = gtk_selection_model_get_selection (GTK_SELECTION_MODEL (priv->model));
-    selection_set = gtk_bitset_new_empty ();
+    old_selection_set = gtk_selection_model_get_selection (GTK_SELECTION_MODEL (priv->model));
+    /* We aren't allowed to modify the actual selection bitset */
+    update_set = gtk_bitset_copy (old_selection_set);
+    new_selection_set = gtk_bitset_new_empty ();
 
     /* Convert file list into set of model indices */
     selection_files = convert_glist_to_queue (selection);
     selection_items = nautilus_view_model_get_items_from_files (priv->model, selection_files);
     for (GList *l = g_queue_peek_head_link (selection_items); l != NULL; l = l->next)
     {
-        gtk_bitset_add (selection_set,
+        gtk_bitset_add (new_selection_set,
                         nautilus_view_model_get_index (priv->model, l->data));
     }
 
@@ -1236,9 +1250,9 @@ real_set_selection (NautilusFilesView *files_view,
         set_focus_item (self, item);
     }
 
-    gtk_bitset_union (update_set, selection_set);
+    gtk_bitset_union (update_set, new_selection_set);
     gtk_selection_model_set_selection (GTK_SELECTION_MODEL (priv->model),
-                                       selection_set,
+                                       new_selection_set,
                                        update_set);
 }
 
@@ -1580,8 +1594,6 @@ real_preview_selection_event (NautilusFilesView *files_view,
     {
         if (i == 0)
         {
-            /* We are at the start of the list, can't move up. */
-            gtk_widget_error_bell (GTK_WIDGET (self));
             return;
         }
 
@@ -1593,8 +1605,6 @@ real_preview_selection_event (NautilusFilesView *files_view,
 
         if (i >= g_list_model_get_n_items (G_LIST_MODEL (priv->model)))
         {
-            /* We are at the end of the list, can't move down. */
-            gtk_widget_error_bell (GTK_WIDGET (self));
             return;
         }
     }
@@ -1716,14 +1726,61 @@ on_vadjustment_changed (GtkAdjustment *adjustment,
     }
 }
 
+static gboolean
+nautilus_list_base_focus (GtkWidget        *widget,
+                          GtkDirectionType  direction)
+{
+    NautilusListBase *self = NAUTILUS_LIST_BASE (widget);
+    g_autolist (NautilusFile) selection = NULL;
+    gboolean no_selection;
+    gboolean handled;
+
+    /* If focus is already inside the view, allow to immediately tab out of it,
+     * instead of having to cycle through every item (potentially many). */
+    if (direction == GTK_DIR_TAB_FORWARD || direction == GTK_DIR_TAB_BACKWARD)
+    {
+        GtkWidget *focus_widget = gtk_root_get_focus (gtk_widget_get_root (widget));
+        if (focus_widget != NULL && gtk_widget_is_ancestor (focus_widget, widget))
+        {
+            return FALSE;
+        }
+    }
+
+    selection = nautilus_view_get_selection (NAUTILUS_VIEW (self));
+    no_selection = (selection == NULL);
+
+    handled = GTK_WIDGET_CLASS (nautilus_list_base_parent_class)->focus (widget, direction);
+
+    if (handled && no_selection)
+    {
+        GtkWidget *focus_widget = gtk_root_get_focus (gtk_widget_get_root (widget));
+
+        /* Workaround for https://gitlab.gnome.org/GNOME/nautilus/-/issues/2489
+         * Also ensures an item gets selected when using <Tab> to focus the view.
+         * Ideally to be fixed in GtkListBase instead. */
+        if (focus_widget != NULL)
+        {
+            gtk_widget_activate_action (focus_widget,
+                                        "listitem.select",
+                                        "(bb)",
+                                        FALSE, FALSE);
+        }
+    }
+
+    return handled;
+}
+
 static void
 nautilus_list_base_class_init (NautilusListBaseClass *klass)
 {
     GObjectClass *object_class = G_OBJECT_CLASS (klass);
+    GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
     NautilusFilesViewClass *files_view_class = NAUTILUS_FILES_VIEW_CLASS (klass);
 
     object_class->dispose = nautilus_list_base_dispose;
     object_class->finalize = nautilus_list_base_finalize;
+
+    widget_class->focus = nautilus_list_base_focus;
 
     files_view_class->add_files = real_add_files;
     files_view_class->begin_loading = real_begin_loading;

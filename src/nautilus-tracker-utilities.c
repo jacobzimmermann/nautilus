@@ -27,38 +27,27 @@ static const gchar *tracker_miner_fs_busname = NULL;
 static TrackerSparqlConnection *tracker_miner_fs_connection = NULL;
 static GError *tracker_miner_fs_error = NULL;
 
-static gboolean
-get_host_tracker_miner_fs (GError **error)
+static void
+local_tracker_miner_fs_ready (GObject      *source,
+                              GAsyncResult *res,
+                              gpointer      user_data)
 {
-    const gchar *busname = "org.freedesktop.Tracker3.Miner.Files";
-
-    g_message ("Connecting to %s", busname);
-    tracker_miner_fs_connection = tracker_sparql_connection_bus_new (busname, NULL, NULL, error);
-    if (*error)
+    tracker_miner_fs_connection = tracker_sparql_connection_new_finish (res, &tracker_miner_fs_error);
+    if (tracker_miner_fs_error != NULL)
     {
-        g_warning ("Unable to create connection for session-wide Tracker indexer: %s", (*error)->message);
-        return FALSE;
+        g_critical ("Could not start local Tracker indexer at %s: %s", tracker_miner_fs_busname, tracker_miner_fs_error->message);
     }
-
-    tracker_miner_fs_busname = busname;
-    return TRUE;
 }
 
-static gboolean
-start_local_tracker_miner_fs (GError **error)
+static void
+start_local_tracker_miner_fs (void)
 {
     const gchar *busname = APPLICATION_ID ".Tracker3.Miner.Files";
 
     g_message ("Starting %s", busname);
-    tracker_miner_fs_connection = tracker_sparql_connection_bus_new (busname, NULL, NULL, error);
-    if (*error)
-    {
-        g_critical ("Could not start local Tracker indexer at %s: %s", busname, (*error)->message);
-        return FALSE;
-    }
+    tracker_sparql_connection_bus_new_async (busname, NULL, NULL, NULL, local_tracker_miner_fs_ready, NULL);
 
     tracker_miner_fs_busname = busname;
-    return TRUE;
 }
 
 static gboolean
@@ -68,24 +57,68 @@ inside_flatpak (void)
 }
 
 static void
-setup_tracker_miner_fs_connection (void)
+host_tracker_miner_fs_ready (GObject      *source,
+                             GAsyncResult *res,
+                             gpointer      user_data)
+{
+    tracker_miner_fs_connection = tracker_sparql_connection_bus_new_finish (res, &tracker_miner_fs_error);
+    if (tracker_miner_fs_error)
+    {
+        g_warning ("Unable to create connection for session-wide Tracker indexer: %s", (tracker_miner_fs_error)->message);
+        if (inside_flatpak ())
+        {
+            g_clear_error (&tracker_miner_fs_error);
+            start_local_tracker_miner_fs ();
+        }
+    }
+}
+
+void
+nautilus_tracker_setup_miner_fs_connection (void)
 {
     static gsize tried_tracker_init = FALSE;
 
+    if (tracker_miner_fs_connection != NULL)
+    {
+        /* The connection was already established */
+        return;
+    }
+
     if (g_once_init_enter (&tried_tracker_init))
     {
-        gboolean success;
+        const gchar *busname = "org.freedesktop.Tracker3.Miner.Files";
 
-        success = get_host_tracker_miner_fs (&tracker_miner_fs_error);
+        g_message ("Connecting to %s", busname);
+        tracker_sparql_connection_bus_new_async (busname, NULL, NULL, NULL, host_tracker_miner_fs_ready, NULL);
 
-        if (!success && inside_flatpak ())
-        {
-            g_clear_error (&tracker_miner_fs_error);
-            success = start_local_tracker_miner_fs (&tracker_miner_fs_error);
-        }
+        tracker_miner_fs_busname = busname;
 
         g_once_init_leave (&tried_tracker_init, TRUE);
     }
+}
+
+/**
+ * nautilus_tracker_setup_host_miner_fs_connection_sync:
+ *
+ * This function is only meant to be used within tests.
+ * This version of this setup function intentionally blocks to help with tests.
+ *
+ */
+void
+nautilus_tracker_setup_host_miner_fs_connection_sync (void)
+{
+    g_autoptr (GError) error = NULL;
+    const gchar *busname = "org.freedesktop.Tracker3.Miner.Files";
+
+    g_message ("Starting %s", busname);
+    tracker_miner_fs_connection = tracker_sparql_connection_bus_new (busname, NULL, NULL, &error);
+    if (error != NULL)
+    {
+        g_critical ("Could not start local Tracker indexer at %s: %s", busname, error->message);
+        return;
+    }
+
+    tracker_miner_fs_busname = busname;
 }
 
 /**
@@ -93,10 +126,8 @@ setup_tracker_miner_fs_connection (void)
  * @error: return location for a #GError
  *
  * This function returns a global singleton #TrackerSparqlConnection, or %NULL
- * if we couldn't connect to Tracker Miner FS.
- *
- * The first time you call it, this function will block while trying to connect.
- * This may take some time if starting Tracker Miners from a Flatpak bundle.
+ * if either we couldn't connect to Tracker Miner FS or the connection is still
+ * pending.
  *
  * The returned object is a globally shared singleton which should NOT be
  * unreffed.
@@ -106,7 +137,7 @@ setup_tracker_miner_fs_connection (void)
 TrackerSparqlConnection *
 nautilus_tracker_get_miner_fs_connection (GError **error)
 {
-    setup_tracker_miner_fs_connection ();
+    nautilus_tracker_setup_miner_fs_connection ();
 
     if (tracker_miner_fs_error && error)
     {
@@ -114,29 +145,4 @@ nautilus_tracker_get_miner_fs_connection (GError **error)
     }
 
     return tracker_miner_fs_connection;
-}
-
-/**
- * nautilus_tracker_get_miner_fs_busname:
- * @error: return location for a #GError
- *
- * This function returns a DBus name that can be used to talk to
- * tracker-miner-fs, or %NULL if there is no Tracker Miner FS available.
- *
- * The first time you call it, this function will block while trying to connect.
- * This may take some time if starting Tracker Miners from a Flatpak bundle.
- *
- * Returns: a string
- */
-const gchar *
-nautilus_tracker_get_miner_fs_busname (GError **error)
-{
-    setup_tracker_miner_fs_connection ();
-
-    if (tracker_miner_fs_error && error)
-    {
-        *error = g_error_copy (tracker_miner_fs_error);
-    }
-
-    return tracker_miner_fs_busname;
 }

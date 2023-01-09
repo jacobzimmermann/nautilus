@@ -117,7 +117,7 @@ autorun (GMount *mount)
     {
         program_to_spawn = g_file_get_child (root, "autorun");
     }
-    else if (_check_file (root, "autorun.sh", TRUE))
+    else if (_check_file (root, "autorun.sh", FALSE))
     {
         program_to_spawn = g_file_new_for_path ("/bin/sh");
         program_parameter_file = g_file_get_child (root, "autorun.sh");
@@ -243,6 +243,7 @@ main (int   argc,
     textdomain (GETTEXT_PACKAGE);
 
     gtk_init ();
+    adw_init ();
 
     if (argc != 2)
     {
@@ -273,6 +274,11 @@ main (int   argc,
     }
 
     present_autorun_for_software_dialog (mount);
+
+    while (g_list_model_get_n_items (gtk_window_get_toplevels ()) > 0)
+    {
+        g_main_context_iteration (NULL, TRUE);
+    }
 
 out:
     return 0;
