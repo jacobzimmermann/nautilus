@@ -1163,6 +1163,9 @@ real_is_empty (NautilusFilesView *files_view)
 static void
 real_end_file_changes (NautilusFilesView *files_view)
 {
+    NautilusListBase *self = NAUTILUS_LIST_BASE (files_view);
+
+    nautilus_list_base_reset_sort (self);
 }
 
 static void
@@ -1491,7 +1494,7 @@ real_add_files (NautilusFilesView *files_view,
     NautilusListBase *self = NAUTILUS_LIST_BASE (files_view);
     NautilusListBasePrivate *priv = nautilus_list_base_get_instance_private (self);
     g_autoptr (GQueue) files_queue = NULL;
-    g_autoptr (GQueue) items = NULL;
+    g_autoqueue (NautilusViewItem) items = NULL;
 
     files_queue = convert_glist_to_queue (files);
     items = convert_files_to_items (self, files_queue);
@@ -1585,6 +1588,7 @@ real_preview_selection_event (NautilusFilesView *files_view,
 {
     NautilusListBase *self = NAUTILUS_LIST_BASE (files_view);
     NautilusListBasePrivate *priv = nautilus_list_base_get_instance_private (self);
+    g_autoptr (NautilusViewItem) item = NULL;
     guint i;
     gboolean rtl = (gtk_widget_get_direction (GTK_WIDGET (self)) == GTK_TEXT_DIR_RTL);
 
@@ -1610,7 +1614,8 @@ real_preview_selection_event (NautilusFilesView *files_view,
     }
 
     gtk_selection_model_select_item (GTK_SELECTION_MODEL (priv->model), i, TRUE);
-    set_focus_item (self, g_list_model_get_item (G_LIST_MODEL (priv->model), i));
+    item = g_list_model_get_item (G_LIST_MODEL (priv->model), i);
+    set_focus_item (self, item);
 }
 
 static void
@@ -1889,4 +1894,14 @@ nautilus_list_base_setup_gestures (NautilusListBase *self)
     g_signal_connect (drop_target, "drop", G_CALLBACK (on_view_drop), self);
     gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (drop_target));
     priv->view_drop_target = drop_target;
+}
+
+void
+nautilus_list_base_reset_sort (NautilusListBase *self)
+{
+    NautilusViewModel *model;
+
+    /* Reset the sorter to trigger ressorting */
+    model = nautilus_list_base_get_model (NAUTILUS_LIST_BASE (self));
+    nautilus_view_model_set_sorter (model, nautilus_view_model_get_sorter (model));
 }
