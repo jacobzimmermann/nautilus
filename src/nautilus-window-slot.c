@@ -147,6 +147,8 @@ struct _NautilusWindowSlot
     GList *selection;
 };
 
+static const char *view_type_attr = "xattr::org.gnome.nautilus.view_id";
+
 G_DEFINE_TYPE (NautilusWindowSlot, nautilus_window_slot, GTK_TYPE_BOX);
 
 static GParamSpec *properties[NUM_PROPERTIES] = { NULL, };
@@ -972,19 +974,50 @@ action_search_visible (GSimpleAction *action,
 
 static void
 change_files_view_mode (NautilusWindowSlot *self,
-                        guint               view_id)
+                        guint               view_id,
+                        gboolean            do_save)
 {
     const gchar *preferences_key;
 
+    if (!do_save)
+    {
+        GFileInfo *ginfo = g_file_query_info(nautilus_window_slot_get_location(self), view_type_attr, G_FILE_QUERY_INFO_NONE, NULL, NULL);
+        if (ginfo) {
+            const char *view_id_attr = g_file_info_get_attribute_string(ginfo, view_type_attr);
+            if (view_id_attr)
+            {
+                guint8 id = view_id_attr[0] - '0';
+                guint restored_view_id = (guint) id;
+                if (restored_view_id >= NAUTILUS_VIEW_LIST_ID && restored_view_id <= NAUTILUS_VIEW_GRID_ID)
+                    view_id = restored_view_id;
+            }
+            g_object_unref(ginfo);
+        }
+    }
     if (!nautilus_window_slot_content_view_matches (self, view_id))
     {
         nautilus_window_slot_set_content_view (self, view_id);
     }
-    preferences_key = nautilus_view_is_searching (nautilus_window_slot_get_current_view (self)) ?
-                      NAUTILUS_PREFERENCES_SEARCH_VIEW :
-                      NAUTILUS_PREFERENCES_DEFAULT_FOLDER_VIEWER;
 
-    g_settings_set_enum (nautilus_preferences, preferences_key, view_id);
+    if (do_save)
+    {
+        g_assert(view_id >= NAUTILUS_VIEW_LIST_ID && view_id <= NAUTILUS_VIEW_GRID_ID);
+        char view_id_as_str[4];
+        snprintf(view_id_as_str, 4, "%d", view_id);
+        g_file_set_attribute_string(
+            nautilus_window_slot_get_location(self),
+            view_type_attr,
+            view_id_as_str,
+            G_FILE_QUERY_INFO_NONE,
+            NULL,
+            NULL
+        );
+        preferences_key = nautilus_view_is_searching (nautilus_window_slot_get_current_view (self)) ?
+                          NAUTILUS_PREFERENCES_SEARCH_VIEW :
+                          NAUTILUS_PREFERENCES_DEFAULT_FOLDER_VIEWER;
+
+        g_settings_set_enum (nautilus_preferences, preferences_key, view_id);
+    }
 }
 
 static void
@@ -1004,11 +1037,11 @@ action_files_view_mode_toggle (GSimpleAction *action,
     current_view_id = nautilus_view_get_view_id (self->content_view);
     if (current_view_id == NAUTILUS_VIEW_LIST_ID)
     {
-        change_files_view_mode (self, NAUTILUS_VIEW_GRID_ID);
+        change_files_view_mode (self, NAUTILUS_VIEW_GRID_ID, TRUE);
     }
     else
     {
-        change_files_view_mode (self, NAUTILUS_VIEW_LIST_ID);
+        change_files_view_mode (self, NAUTILUS_VIEW_LIST_ID, TRUE);
     }
 }
 
@@ -1028,7 +1061,7 @@ action_files_view_mode (GSimpleAction *action,
         return;
     }
 
-    change_files_view_mode (self, view_id);
+    change_files_view_mode (self, view_id, FALSE);
 
     g_simple_action_set_state (action, value);
 }
@@ -1372,7 +1405,7 @@ begin_location_change (NautilusWindowSlot         *self,
     /* Get the info needed to make decisions about how to open the new location */
     self->determine_view_file = nautilus_file_get (location);
     g_assert (self->determine_view_file != NULL);
-
+    
     nautilus_file_call_when_ready (self->determine_view_file,
                                    NAUTILUS_FILE_ATTRIBUTE_INFO |
                                    NAUTILUS_FILE_ATTRIBUTE_MOUNT,
