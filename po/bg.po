@@ -18,7 +18,7 @@ msgstr ""
 "Project-Id-Version: nautilus master\n"
 "Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/nautilus/issues\n"
 "POT-Creation-Date: 2023-02-23 17:48+0000\n"
-"PO-Revision-Date: 2023-02-26 10:46+0200\n"
+"PO-Revision-Date: 2023-04-07 19:55+0300\n"
 "Last-Translator: Alexander Shopov <ash@kambanaria.org>\n"
 "Language-Team: Bulgarian <dict@fsa-bg.org>\n"
 "Language: bg\n"
@@ -1746,7 +1746,7 @@ msgstr "По_вторен опит"
 
 #: src/nautilus-file-operations.c:275
 msgid "_Delete"
-msgstr "Из_триване"
+msgstr "_Изтриване"
 
 #: src/nautilus-file-operations.c:276
 msgid "Delete _All"
@@ -2797,7 +2797,7 @@ msgstr "Избор на цел при копиране"
 #: src/nautilus-files-view.c:6026 src/nautilus-files-view.c:6434
 #: src/resources/ui/nautilus-files-view-select-items.ui:16
 msgid "_Select"
-msgstr "_Избиране"
+msgstr "_Избор"
 
 #: src/nautilus-files-view.c:6430
 msgid "Select Extract Destination"
@@ -4122,8 +4122,8 @@ msgstr ""
 msgid ""
 "Turn on File Sharing to share the contents of this folder over the network."
 msgstr ""
-"Включете споделянето на файловете, за да може съдържанието на тази папка да "
-"се вижда по мрежата."
+"Включване на споделянето, така че съдържанието на тази папка да е достъпно "
+"по мрежата."
 
 #: src/nautilus-special-location-bar.c:163
 msgid "Sharing Settings"
@@ -4817,7 +4817,7 @@ msgstr "Изберете _ново име за назначението"
 
 #: src/resources/ui/nautilus-file-conflict-dialog.ui:129
 msgid "_Reset"
-msgstr "_Отмяна"
+msgstr "_Изчистване"
 
 #: src/resources/ui/nautilus-file-conflict-dialog.ui:145
 msgid "Apply this action to all files and folders"
@@ -5596,7 +5596,7 @@ msgstr "„%s“ липсва в списъка с отметки"
 #: src/gtk/nautilusgtkbookmarksmanager.c:413
 #, c-format
 msgid "%s already exists in the bookmarks list"
-msgstr "„%s“ вече присъства в списъка с отметки<"
+msgstr "„%s“ вече присъства в списъка с отметки"
 
 #: src/gtk/nautilusgtkplacessidebar.c:419
 msgid "Eject"
@@ -5734,20 +5734,3 @@ msgstr "Странична лента"
 #: src/gtk/nautilusgtkplacessidebar.c:3990
 msgid "List of common shortcuts, mountpoints, and bookmarks."
 msgstr "Списък с клавишни комбинации, точки на монтиране и отметки."
-
-#~ msgid "Show location bar in new windows"
-#~ msgstr "Показване на страничната лента в новите прозорци"
-
-#~ msgid ""
-#~ "If set to true, newly opened windows will have the location bar visible."
-#~ msgstr "Ако е истина, новите прозорци ще имат видима адресна лента."
-
-#~ msgid "dropped data"
-#~ msgstr "пуснат текст"
-
-#~ msgid "_Select Application"
-#~ msgstr "_Избор на програма"
-
-#~ msgctxt "shortcut window"
-#~ msgid "Open file and close window"
-#~ msgstr "Отваряне на файл и затваряне на прозорец"

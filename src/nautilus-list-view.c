@@ -853,6 +853,60 @@ real_sort_directories_first_changed (NautilusFilesView *files_view)
     nautilus_view_model_sort (nautilus_list_base_get_model (NAUTILUS_LIST_BASE (self)));
 }
 
+static char *
+real_get_backing_uri (NautilusFilesView *view)
+{
+    NautilusListView *self = NAUTILUS_LIST_VIEW (view);
+    NautilusViewModel *model = nautilus_list_base_get_model (NAUTILUS_LIST_BASE (self));
+    g_autoptr (NautilusFile) common_parent = NULL;
+
+    if (!self->expand_as_a_tree)
+    {
+        return NAUTILUS_FILES_VIEW_CLASS (nautilus_list_view_parent_class)->get_backing_uri (view);
+    }
+
+    /* If we are using tree expanders use the items parent, unless it
+     * is an expanded folder, in which case we should use that folder directly.
+     * When dealing with multiple selections, use the same rules, but only
+     * if a common parent exists. */
+
+    for (guint i = 0; i < g_list_model_get_n_items (G_LIST_MODEL (model)); i++)
+    {
+        g_autoptr (GtkTreeListRow) row = g_list_model_get_item (G_LIST_MODEL (model), i);
+        g_autoptr (NautilusViewItem) item = NULL;
+        g_autoptr (NautilusFile) parent_file = NULL;
+        NautilusFile *file;
+        NautilusFile *current_parent;
+
+        if (!gtk_selection_model_is_selected (GTK_SELECTION_MODEL (model), i))
+        {
+            continue;
+        }
+
+        item = gtk_tree_list_row_get_item (row);
+        file = nautilus_view_item_get_file (item);
+        parent_file = nautilus_file_get_parent (file);
+        current_parent = gtk_tree_list_row_get_expanded (row) ? file : parent_file;
+
+        if (common_parent == NULL)
+        {
+            common_parent = nautilus_file_ref (current_parent);
+        }
+        else if (current_parent != common_parent)
+        {
+            g_clear_pointer (&common_parent, nautilus_file_unref);
+            break;
+        }
+    }
+
+    if (common_parent != NULL)
+    {
+        return nautilus_file_get_uri (common_parent);
+    }
+
+    return NAUTILUS_FILES_VIEW_CLASS (nautilus_list_view_parent_class)->get_backing_uri (view);
+}
+
 static guint
 real_get_view_id (NautilusFilesView *files_view)
 {
@@ -1000,58 +1054,6 @@ on_row_expanded_changed (GObject    *gobject,
     }
 }
 
-static void
-on_item_click_released_workaround (GtkGestureClick *gesture,
-                                   gint             n_press,
-                                   gdouble          x,
-                                   gdouble          y,
-                                   gpointer         user_data)
-{
-    NautilusViewCell *cell = user_data;
-    NautilusListView *self = NAUTILUS_LIST_VIEW (nautilus_view_cell_get_view (cell));
-    GdkModifierType modifiers;
-
-    modifiers = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture));
-    if (n_press == 1 &&
-        modifiers & (GDK_CONTROL_MASK | GDK_SHIFT_MASK))
-    {
-        NautilusViewModel *model;
-        g_autoptr (NautilusViewItem) item = NULL;
-        guint i;
-
-        model = nautilus_list_base_get_model (NAUTILUS_LIST_BASE (self));
-        item = nautilus_view_cell_get_item (cell);
-        g_return_if_fail (item != NULL);
-        i = nautilus_view_model_get_index (model, item);
-
-        gtk_widget_activate_action (GTK_WIDGET (cell),
-                                    "list.select-item",
-                                    "(ubb)",
-                                    i,
-                                    modifiers & GDK_CONTROL_MASK,
-                                    modifiers & GDK_SHIFT_MASK);
-    }
-}
-
-/* This whole event handler is a workaround to a GtkColumnView bug: it
- * activates the list|select-item action twice, which may cause the
- * second activation to reverse the effects of the first:
- * https://gitlab.gnome.org/GNOME/gtk/-/issues/4819
- *
- * As a workaround, we are going to activate the action a 3rd time.
- * The third time is the charm, as the saying goes. */
-static void
-setup_selection_click_workaround (NautilusViewCell *cell)
-{
-    GtkEventController *controller;
-
-    controller = GTK_EVENT_CONTROLLER (gtk_gesture_click_new ());
-    gtk_widget_add_controller (GTK_WIDGET (cell), controller);
-    gtk_event_controller_set_propagation_phase (controller, GTK_PHASE_BUBBLE);
-    gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (controller), GDK_BUTTON_PRIMARY);
-    g_signal_connect (controller, "released", G_CALLBACK (on_item_click_released_workaround), cell);
-}
-
 static gboolean
 tree_expander_shortcut_cb (GtkWidget *widget,
                            GVariant  *args,
@@ -1137,8 +1139,6 @@ setup_name_cell (GtkSignalListItemFactory *factory,
     {
         nautilus_name_cell_show_snippet (NAUTILUS_NAME_CELL (cell));
     }
-
-    setup_selection_click_workaround (cell);
 
     if (self->expand_as_a_tree)
     {
@@ -1265,7 +1265,6 @@ setup_star_cell (GtkSignalListItemFactory *factory,
     cell = nautilus_star_cell_new (NAUTILUS_LIST_BASE (user_data));
     setup_cell_common (listitem, cell);
     setup_cell_hover (cell);
-    setup_selection_click_workaround (cell);
 }
 
 static void
@@ -1282,7 +1281,6 @@ setup_label_cell (GtkSignalListItemFactory *factory,
     cell = nautilus_label_cell_new (NAUTILUS_LIST_BASE (user_data), nautilus_column);
     setup_cell_common (listitem, cell);
     setup_cell_hover (cell);
-    setup_selection_click_workaround (cell);
 }
 
 static void
@@ -1485,6 +1483,7 @@ nautilus_list_view_class_init (NautilusListViewClass *klass)
     files_view_class->can_zoom_in = real_can_zoom_in;
     files_view_class->can_zoom_out = real_can_zoom_out;
     files_view_class->sort_directories_first_changed = real_sort_directories_first_changed;
+    files_view_class->get_backing_uri = real_get_backing_uri;
     files_view_class->get_view_id = real_get_view_id;
     files_view_class->restore_standard_zoom_level = real_restore_standard_zoom_level;
     files_view_class->is_zoom_level_default = real_is_zoom_level_default;

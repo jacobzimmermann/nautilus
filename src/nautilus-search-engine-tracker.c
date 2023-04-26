@@ -181,7 +181,6 @@ cursor_callback (GObject      *object,
     const char *atime_str;
     const char *ctime_str;
     const gchar *snippet;
-    GDateTime *date = NULL;
     g_autoptr (GTimeZone) tz = g_time_zone_new_local ();
     gdouble rank, match;
     gboolean success;
@@ -234,42 +233,35 @@ cursor_callback (GObject      *object,
 
     if (mtime_str != NULL)
     {
-        date = g_date_time_new_from_iso8601 (mtime_str, tz);
-    }
-    if (date != NULL)
-    {
+        g_autoptr (GDateTime) date = g_date_time_new_from_iso8601 (mtime_str, tz);
+
+        if (date == NULL)
+        {
+            g_warning ("unable to parse mtime: %s", mtime_str);
+        }
         nautilus_search_hit_set_modification_time (hit, date);
-        g_clear_pointer (&date, g_date_time_unref);
     }
-    else
-    {
-        g_warning ("unable to parse mtime: %s", mtime_str);
-    }
+
     if (atime_str != NULL)
     {
-        date = g_date_time_new_from_iso8601 (atime_str, tz);
-    }
-    if (date != NULL)
-    {
+        g_autoptr (GDateTime) date = g_date_time_new_from_iso8601 (atime_str, tz);
+
+        if (date == NULL)
+        {
+            g_warning ("unable to parse atime: %s", atime_str);
+        }
         nautilus_search_hit_set_access_time (hit, date);
-        g_clear_pointer (&date, g_date_time_unref);
     }
-    else
-    {
-        g_warning ("unable to parse atime: %s", atime_str);
-    }
+
     if (ctime_str != NULL)
     {
-        date = g_date_time_new_from_iso8601 (ctime_str, tz);
-    }
-    if (date != NULL)
-    {
+        g_autoptr (GDateTime) date = g_date_time_new_from_iso8601 (ctime_str, tz);
+
+        if (date == NULL)
+        {
+            g_warning ("unable to parse ctime: %s", ctime_str);
+        }
         nautilus_search_hit_set_creation_time (hit, date);
-        g_clear_pointer (&date, g_date_time_unref);
-    }
-    else
-    {
-        g_warning ("unable to parse ctime: %s", ctime_str);
     }
 
     g_queue_push_head (tracker->hits_pending, hit);

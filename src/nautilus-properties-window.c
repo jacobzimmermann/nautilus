@@ -2961,7 +2961,7 @@ execution_bit_changed (NautilusPropertiesWindow *self,
     const FilterType filter_type = FILES_ONLY;
 
     /* if activated from switch, switch state is already toggled, thus invert value via XOR. */
-    gboolean active = gtk_switch_get_state (self->execution_switch) ^ GTK_IS_SWITCH (widget);
+    gboolean active = gtk_switch_get_active (self->execution_switch) ^ GTK_IS_SWITCH (widget);
     gboolean set_executable = !active;
 
     update_permissions (self,
@@ -3001,8 +3001,8 @@ update_execution_row (GtkWidget         *row,
                                          G_CALLBACK (execution_bit_changed),
                                          self);
 
-        gtk_switch_set_state (self->execution_switch,
-                              target_perm->file_exec_permissions == PERMISSION_EXEC);
+        gtk_switch_set_active (self->execution_switch,
+                               target_perm->file_exec_permissions == PERMISSION_EXEC);
 
         g_signal_handlers_unblock_by_func (self->execution_switch,
                                            G_CALLBACK (execution_bit_changed),
@@ -3748,7 +3748,6 @@ get_pending_key (GList *file_list)
     GList *uris = NULL;
     GList *l;
     GString *key;
-    char *ret;
 
     uris = NULL;
     for (l = file_list; l != NULL; l = l->next)
@@ -3766,10 +3765,7 @@ get_pending_key (GList *file_list)
 
     g_list_free_full (uris, g_free);
 
-    ret = key->str;
-    g_string_free (key, FALSE);
-
-    return ret;
+    return g_string_free (key, FALSE);
 }
 
 static StartupData *

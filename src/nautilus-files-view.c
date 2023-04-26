@@ -3217,46 +3217,6 @@ slot_active_changed (NautilusWindowSlot *slot,
 }
 
 static gboolean
-nautilus_files_view_focus (GtkWidget        *widget,
-                           GtkDirectionType  direction)
-{
-    NautilusFilesView *view;
-    NautilusFilesViewPrivate *priv;
-    GtkWidget *focus;
-    GtkWidget *main_child;
-
-    view = NAUTILUS_FILES_VIEW (widget);
-    priv = nautilus_files_view_get_instance_private (view);
-    focus = gtk_window_get_focus (GTK_WINDOW (gtk_widget_get_root (widget)));
-
-    /* In general, we want to forward focus movement to the main child. However,
-     * we must chain up for default focus handling in case the focus in in any
-     * other child, e.g. a popover. */
-    if (gtk_widget_is_ancestor (focus, widget) &&
-        !gtk_widget_is_ancestor (focus, priv->scrolled_window))
-    {
-        if (GTK_WIDGET_CLASS (nautilus_files_view_parent_class)->focus (widget, direction))
-        {
-            return TRUE;
-        }
-        else
-        {
-            /* The default handler returns FALSE if a popover has just been
-             * closed, because it moves the focus forward. But we want to move
-             * focus back into the view's main child. So, fall through. */
-        }
-    }
-
-    main_child = gtk_scrolled_window_get_child (GTK_SCROLLED_WINDOW (priv->scrolled_window));
-    if (main_child != NULL)
-    {
-        return gtk_widget_child_focus (main_child, direction);
-    }
-
-    return FALSE;
-}
-
-static gboolean
 nautilus_files_view_grab_focus (GtkWidget *widget)
 {
     /* focus the child of the scrolled window if it exists */
@@ -4340,6 +4300,11 @@ process_old_files (NautilusFilesView *view)
         for (GList *node = files_added; node != NULL; node = node->next)
         {
             pending = node->data;
+            if (nautilus_file_is_gone (pending->file))
+            {
+                g_warning ("Attempted to add a non-existent file to the view.");
+                continue;
+            }
             pending_additions = g_list_prepend (pending_additions, pending->file);
             /* Acknowledge the files that were pending to be revealed */
             if (g_hash_table_contains (priv->pending_reveal, pending->file))
@@ -7204,8 +7169,8 @@ update_actions_clipboard_contents_received (GObject      *source_object,
                                             GAsyncResult *res,
                                             gpointer      user_data)
 {
-    NautilusFilesView *view = NAUTILUS_FILES_VIEW (user_data);
-    NautilusFilesViewPrivate *priv = nautilus_files_view_get_instance_private (view);
+    NautilusFilesView *view;
+    NautilusFilesViewPrivate *priv;
     NautilusClipboard *clip = NULL;
     gboolean can_link_from_copied_files;
     gboolean settings_show_create_link;
@@ -7216,8 +7181,15 @@ update_actions_clipboard_contents_received (GObject      *source_object,
     const GValue *value;
 
     value = gdk_clipboard_read_value_finish (GDK_CLIPBOARD (source_object), res, NULL);
+    if (value == NULL)
+    {
+        return;
+    }
 
-    if (value != NULL && G_VALUE_HOLDS (value, NAUTILUS_TYPE_CLIPBOARD))
+    view = NAUTILUS_FILES_VIEW (user_data);
+    priv = nautilus_files_view_get_instance_private (view);
+
+    if (G_VALUE_HOLDS (value, NAUTILUS_TYPE_CLIPBOARD))
     {
         clip = g_value_get_boxed (value);
     }
@@ -7866,7 +7838,10 @@ real_update_actions_state (NautilusFilesView *view)
     action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group),
                                          "properties");
     g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
-                                 TRUE);
+                                 selection_count != 0 ||
+                                 (!selection_contains_recent &&
+                                  !selection_contains_search &&
+                                  !selection_contains_starred));
     action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group),
                                          "current-directory-properties");
     g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
@@ -9506,7 +9481,6 @@ nautilus_files_view_class_init (NautilusFilesViewClass *klass)
     oclass->get_property = nautilus_files_view_get_property;
     oclass->set_property = nautilus_files_view_set_property;
 
-    widget_class->focus = nautilus_files_view_focus;
     widget_class->grab_focus = nautilus_files_view_grab_focus;
 
 

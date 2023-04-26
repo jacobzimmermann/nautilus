@@ -270,15 +270,15 @@ send_batch_in_idle (SearchThreadData *thread_data)
 }
 
 #define STD_ATTRIBUTES \
-    G_FILE_ATTRIBUTE_STANDARD_NAME "," \
-    G_FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME "," \
-    G_FILE_ATTRIBUTE_STANDARD_IS_BACKUP "," \
-    G_FILE_ATTRIBUTE_STANDARD_IS_HIDDEN "," \
-    G_FILE_ATTRIBUTE_STANDARD_TYPE "," \
-    G_FILE_ATTRIBUTE_TIME_MODIFIED "," \
-    G_FILE_ATTRIBUTE_TIME_ACCESS "," \
-    G_FILE_ATTRIBUTE_TIME_CREATED "," \
-    G_FILE_ATTRIBUTE_ID_FILE
+        G_FILE_ATTRIBUTE_STANDARD_NAME "," \
+        G_FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME "," \
+        G_FILE_ATTRIBUTE_STANDARD_IS_BACKUP "," \
+        G_FILE_ATTRIBUTE_STANDARD_IS_HIDDEN "," \
+        G_FILE_ATTRIBUTE_STANDARD_TYPE "," \
+        G_FILE_ATTRIBUTE_TIME_MODIFIED "," \
+        G_FILE_ATTRIBUTE_TIME_ACCESS "," \
+        G_FILE_ATTRIBUTE_TIME_CREATED "," \
+        G_FILE_ATTRIBUTE_ID_FILE
 
 static void
 visit_directory (GFile            *dir,
@@ -302,7 +302,8 @@ visit_directory (GFile            *dir,
     enumerator = g_file_enumerate_children (dir,
                                             data->mime_types->len > 0 ?
                                             STD_ATTRIBUTES ","
-                                            G_FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE
+                                            G_FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE ","
+                                            G_FILE_ATTRIBUTE_STANDARD_FAST_CONTENT_TYPE
                                             :
                                             STD_ATTRIBUTES
                                             ,
@@ -347,6 +348,12 @@ visit_directory (GFile            *dir,
         {
             mime_type = g_file_info_get_attribute_string (info,
                                                           G_FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE);
+            if (mime_type == NULL)
+            {
+                mime_type = g_file_info_get_attribute_string (info,
+                                                              G_FILE_ATTRIBUTE_STANDARD_FAST_CONTENT_TYPE);
+            }
+
             found = FALSE;
 
             for (gint i = 0; mime_type != NULL && i < data->mime_types->len; i++)

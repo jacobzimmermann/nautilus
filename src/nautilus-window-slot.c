@@ -740,7 +740,16 @@ nautilus_window_slot_set_property (GObject      *object,
 
         case PROP_SEARCHING:
         {
-            nautilus_window_slot_set_searching (self, g_value_get_boolean (value));
+            /* Should be nautilus_window_slot_set_searching(), but then
+             * the search-visible action would get out of sync with this
+             * property. See discussion in https://gitlab.gnome.org/GNOME/nautilus/-/merge_requests/1157
+             */
+            nautilus_window_slot_set_search_visible (self, g_value_get_boolean (value));
+            /* The previous call should have already caused the action
+             * to call nautilus_window_slot_set_searching(), but it
+             * doesn't hurt to make sure we set our boolean propperly.
+             */
+            self->searching = g_value_get_boolean (value);
         }
         break;
 
@@ -1475,11 +1484,10 @@ viewed_file_changed_callback (NautilusFile       *file,
         if (self->viewed_file_seen)
         {
             GFile *go_to_file;
-            GFile *parent;
             GFile *location;
             GMount *mount;
+            gboolean find_existing = FALSE;
 
-            parent = NULL;
             location = nautilus_file_get_location (file);
 
             if (g_file_is_native (location))
@@ -1488,16 +1496,18 @@ viewed_file_changed_callback (NautilusFile       *file,
 
                 if (mount == NULL)
                 {
-                    parent = g_file_get_parent (location);
+                    find_existing = TRUE;
                 }
 
                 g_clear_object (&mount);
             }
 
-            if (parent != NULL)
+            if (find_existing)
             {
-                /* auto-show existing parent */
-                go_to_file = nautilus_find_existing_uri_in_hierarchy (parent);
+                /* Verify also the current location to prevent jumps to parent
+                 * in case of autofs.
+                 */
+                go_to_file = nautilus_find_existing_uri_in_hierarchy (location);
             }
             else
             {
@@ -1506,7 +1516,6 @@ viewed_file_changed_callback (NautilusFile       *file,
 
             nautilus_window_slot_open_location_full (self, go_to_file, 0, NULL);
 
-            g_clear_object (&parent);
             g_object_unref (go_to_file);
             g_object_unref (location);
         }
@@ -2600,10 +2609,8 @@ nautilus_window_slot_show_special_location_bar (NautilusWindowSlot      *self,
 static void
 nautilus_window_slot_update_for_new_location (NautilusWindowSlot *self)
 {
-    GFile *new_location;
+    g_autoptr (GFile) new_location = g_steal_pointer (&self->pending_location);
     NautilusFile *file;
-    new_location = self->pending_location;
-    self->pending_location = NULL;
 
     file = nautilus_file_get (new_location);
     nautilus_window_slot_update_bookmark (self, file);

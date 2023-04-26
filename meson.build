@@ -3,7 +3,7 @@ project('nautilus', 'c',
 
   # Do not forget when releasing:
   #  * Update version in data/org.gnome.Nautilus.appdata.xml.in.in
-  version: '44.0',
+  version: '44.2',
 
   meson_version: '>= 0.59.0',
   license: 'GPL-3.0-or-later'
@@ -102,10 +102,10 @@ gio = dependency('gio-2.0', version: glib_ver)
 gio_unix = dependency('gio-unix-2.0', version: glib_ver)
 glib = dependency('glib-2.0', version: glib_ver)
 gmodule = dependency('gmodule-no-export-2.0', version: glib_ver)
-gnome_autoar = dependency('gnome-autoar-0', version: '>= 0.4.0')
+gnome_autoar = dependency('gnome-autoar-0', version: '>= 0.4.4')
 gnome_desktop = dependency('gnome-desktop-4', version: '>= 43')
-gtk = dependency('gtk4', version: '>= 4.9.1')
-libadwaita = dependency('libadwaita-1', version: '>= 1.3.alpha')
+gtk = dependency('gtk4', version: '>= 4.10.3')
+libadwaita = dependency('libadwaita-1', version: '>= 1.3.0')
 libportal = dependency('libportal', version: '>= 0.5')
 libportal_gtk4 = dependency('libportal-gtk4', version: '>= 0.5')
 selinux = []

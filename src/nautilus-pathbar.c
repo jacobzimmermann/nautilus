@@ -105,6 +105,7 @@ struct _NautilusPathBar
 
     NautilusFile *context_menu_file;
     GtkPopoverMenu *current_view_menu_popover;
+    guint bind_menu_model_to_popover_id;
     GtkWidget *current_view_menu_button;
     GtkWidget *button_menu_popover;
     GMenu *current_view_menu;
@@ -241,6 +242,7 @@ bind_current_view_menu_model_to_popover (NautilusPathBar *self)
 {
     gtk_popover_menu_set_menu_model (self->current_view_menu_popover,
                                      G_MENU_MODEL (self->current_view_menu));
+    self->bind_menu_model_to_popover_id = 0;
     return G_SOURCE_REMOVE;
 }
 
@@ -341,6 +343,8 @@ static void
 nautilus_path_bar_dispose (GObject *object)
 {
     NautilusPathBar *self = NAUTILUS_PATH_BAR (object);
+
+    g_clear_handle_id (&self->bind_menu_model_to_popover_id, g_source_remove);
 
     nautilus_path_bar_clear_buttons (self);
 
@@ -457,7 +461,10 @@ nautilus_path_bar_set_templates_menu (NautilusPathBar *self,
     }
 
     nautilus_gmenu_set_from_model (self->templates_submenu, menu);
-    g_idle_add ((GSourceFunc) bind_current_view_menu_model_to_popover, self);
+    if (self->bind_menu_model_to_popover_id == 0)
+    {
+        self->bind_menu_model_to_popover_id = g_idle_add ((GSourceFunc) bind_current_view_menu_model_to_popover, self);
+    }
 
     i = nautilus_g_menu_model_find_by_string (G_MENU_MODEL (self->current_view_menu),
                                               "nautilus-menu-item",
@@ -746,7 +753,7 @@ on_drag_motion (GtkDropTarget *target,
                 gpointer       user_data)
 {
     ButtonData *button_data = user_data;
-    GdkDragAction action;
+    GdkDragAction action = 0;
     const GValue *value;
     graphene_point_t start;
 
@@ -759,12 +766,7 @@ on_drag_motion (GtkDropTarget *target,
     if (G_VALUE_HOLDS (value, GDK_TYPE_FILE_LIST))
     {
         GSList *items = g_value_get_boxed (value);
-
-        if (items == NULL)
-        {
-            action = 0;
-        }
-        else
+        if (items != NULL)
         {
             action = nautilus_dnd_get_preferred_action (button_data->file, items->data);
         }
