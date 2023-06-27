@@ -1514,7 +1514,17 @@ viewed_file_changed_callback (NautilusFile       *file,
                 go_to_file = g_file_new_for_path (g_get_home_dir ());
             }
 
-            nautilus_window_slot_open_location_full (self, go_to_file, 0, NULL);
+            if (g_file_equal (location, go_to_file))
+            {
+                /* Path gone by time out may have been remounted by
+                 * `nautilus_find_existing_uri_in_hierarchy()`.
+                 */
+                nautilus_window_slot_force_reload (self);
+            }
+            else
+            {
+                nautilus_window_slot_open_location_full (self, go_to_file, 0, NULL);
+            }
 
             g_object_unref (go_to_file);
             g_object_unref (location);
@@ -2281,11 +2291,11 @@ nautilus_window_slot_force_reload (NautilusWindowSlot *self)
     g_object_ref (location);
     current_pos = NULL;
 
-    if (self->new_content_view)
+    if (self->content_view)
     {
         selection = nautilus_view_get_selection (self->content_view);
 
-        if (NAUTILUS_IS_FILES_VIEW (self->new_content_view))
+        if (NAUTILUS_IS_FILES_VIEW (self->content_view))
         {
             current_pos = nautilus_files_view_get_first_visible_file (NAUTILUS_FILES_VIEW (self->content_view));
         }

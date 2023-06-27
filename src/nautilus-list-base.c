@@ -432,6 +432,12 @@ on_item_click_stopped (GtkGestureClick *gesture,
     g_autoptr (NautilusListBase) self = nautilus_view_cell_get_view (cell);
     NautilusListBasePrivate *priv = nautilus_list_base_get_instance_private (self);
 
+    if (self == NULL)
+    {
+        /* The view may already be gone before the cell finalized. */
+        return;
+    }
+
     rubberband_set_state (self, TRUE);
     priv->activate_on_release = FALSE;
     priv->deny_background_click = FALSE;
@@ -1625,8 +1631,7 @@ real_preview_selection_event (NautilusFilesView *files_view,
         }
     }
 
-    gtk_selection_model_select_item (GTK_SELECTION_MODEL (priv->model), i, TRUE);
-    item = g_list_model_get_item (G_LIST_MODEL (priv->model), i);
+    item = get_view_item (G_LIST_MODEL (priv->model), i);
     set_focus_item (self, item);
 }
 
