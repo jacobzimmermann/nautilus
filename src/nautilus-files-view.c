@@ -3706,12 +3706,31 @@ static void
 nautilus_files_view_set_location (NautilusView *view,
                                   GFile        *location)
 {
+    NautilusFilesView *self = NAUTILUS_FILES_VIEW (view);
     NautilusDirectory *directory;
 
     nautilus_profile_start (NULL);
     directory = nautilus_directory_get (location);
 
-    load_directory (NAUTILUS_FILES_VIEW (view), directory);
+    if (NAUTILUS_IS_SEARCH_DIRECTORY (directory))
+    {
+        /* This may happen if switching view mode while searching. In that case,
+         * we need to run the previous query again with the new view, because
+         * `load_directory()` alone doesn't load the old results results for us.
+         *
+         * In this case we don't call `load_directory()` here because that's
+         * going to be called internally by `nautilus_view_set_search_query()`
+         */
+        NautilusQuery *previous_query;
+
+        previous_query = nautilus_search_directory_get_query (NAUTILUS_SEARCH_DIRECTORY (directory));
+        nautilus_view_set_search_query (view, previous_query);
+    }
+    else
+    {
+        load_directory (self, directory);
+    }
+
     nautilus_directory_unref (directory);
     nautilus_profile_end (NULL);
 }
@@ -9587,6 +9606,16 @@ nautilus_files_view_set_search_query (NautilusView  *view,
             nautilus_search_directory_set_query (NAUTILUS_SEARCH_DIRECTORY (directory), query);
 
             g_set_object (&priv->location_before_search, priv->location);
+            if (priv->location_before_search == NULL)
+            {
+                /* This may happen if switching view mode while searching, as
+                 * the new view doesn't have a location. In such cases, we can
+                 * assume the location before search from the query, if not NULL.
+                 */
+                g_autoptr (GFile) queried_location = nautilus_query_get_location (query);
+                g_set_object (&priv->location_before_search, queried_location);
+            }
+
             load_directory (files_view, directory);
 
             g_object_notify (G_OBJECT (view), "searching");
