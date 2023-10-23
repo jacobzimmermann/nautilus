@@ -3,7 +3,7 @@ project('nautilus', 'c',
 
   # Do not forget when releasing:
   #  * Update version in data/org.gnome.Nautilus.appdata.xml.in.in
-  version: '45.0',
+  version: '45.1',
 
   meson_version: '>= 0.59.0',
   license: 'GPL-3.0-or-later'
@@ -97,7 +97,7 @@ glib_ver = '>= 2.77.0'
 libm = cc.find_library('m')
 
 if get_option('extensions')
-  gexiv = dependency('gexiv2', version: '>= 0.14.0')
+  gexiv = dependency('gexiv2', version: '>= 0.14.2')
   gdkpixbuf = dependency('gdk-pixbuf-2.0', version: '>= 2.30.0')
   gst_tag_dep = dependency('gstreamer-tag-1.0')
   gst_pbutils_dep = dependency('gstreamer-pbutils-1.0')

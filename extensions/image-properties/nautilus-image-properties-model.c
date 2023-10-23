@@ -77,7 +77,7 @@ static void
 append_basic_info (NautilusImagesPropertiesModel *self)
 {
     GdkPixbufFormat *format;
-    GExiv2Orientation orientation;
+    GExiv2Orientation orientation = GEXIV2_ORIENTATION_UNSPECIFIED;
     int width;
     int height;
     g_autofree char *name = NULL;
@@ -91,7 +91,10 @@ append_basic_info (NautilusImagesPropertiesModel *self)
 
     append_item (self, _("Image Type"), value);
 
-    orientation = gexiv2_metadata_try_get_orientation (self->md, NULL);
+    if (self->md_ready)
+    {
+        orientation = gexiv2_metadata_try_get_orientation (self->md, NULL);
+    }
 
     if (orientation == GEXIV2_ORIENTATION_ROT_90
         || orientation == GEXIV2_ORIENTATION_ROT_270
@@ -145,7 +148,7 @@ append_gexiv2_tag (NautilusImagesPropertiesModel  *self,
             }
 
             /* don't add empty tags - try next one */
-            if (strlen (tag_value) > 0)
+            if (tag_value != NULL && strlen (tag_value) > 0)
             {
                 append_item (self, description, tag_value);
                 break;

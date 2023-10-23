@@ -21,13 +21,15 @@
     <category>System</category>
   </categories>
   <url type="bugtracker">https://gitlab.gnome.org/GNOME/nautilus/issues</url>
-  <url type="donation">https://www.gnome.org/support-gnome/</url>
-  <url type="help">https://wiki.gnome.org/action/show/Apps/Nautilus</url>
-  <url type="homepage">https://wiki.gnome.org/action/show/Apps/Nautilus</url>
+  <url type="donation">https://www.gnome.org/donate/</url>
+  <url type="help">https://help.gnome.org/users/gnome-help/stable/files.html</url>
+  <url type="homepage">https://apps.gnome.org/Nautilus/</url>
   <url type="translate">https://wiki.gnome.org/TranslationProject</url>
+  <url type="contact">https://discourse.gnome.org/tag/nautilus</url>
+  <url type="vcs-browser">https://gitlab.gnome.org/GNOME/nautilus</url>
   <launchable type="desktop-id">@appid@.desktop</launchable>
   <releases>
-    <release version="45.0" date="2023-09-17" />
+    <release version="45.1" date="2023-10-22" />
   </releases>
   <project_group>GNOME</project_group>
   <project_license>GPL-3.0-or-later</project_license>
@@ -50,7 +52,6 @@
       <caption>Other Locations</caption>
     </screenshot>
   </screenshots>
-  <update_contact>nautilus-list@gnome.org</update_contact>
   <translation type="gettext">nautilus</translation>
   <kudos>
     <kudo>HiDpiIcon</kudo>
