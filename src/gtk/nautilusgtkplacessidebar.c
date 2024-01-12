@@ -2177,7 +2177,8 @@ open_row (NautilusGtkSidebarRow      *row,
                 "volume", &volume,
                 NULL);
 
-  old_uri = g_file_get_uri (sidebar->current_location);
+  if (sidebar->current_location != NULL)
+    old_uri = g_file_get_uri (sidebar->current_location);
 
   if ((g_strcmp0 (old_uri, uri) == 0) && !open_new_slot)
     {
@@ -2529,9 +2530,10 @@ properties_cb (GSimpleAction *action,
   NautilusGtkPlacesSidebar *sidebar = data;
   GList *list;
   NautilusFile *file;
+  g_autofree gchar *uri = NULL;
 
-  g_object_get (sidebar->context_row, "file", &file, NULL);
-
+  g_object_get (sidebar->context_row, "uri", &uri, NULL);
+  file = nautilus_file_get_by_uri (uri);
   list = g_list_append (NULL, file);
   nautilus_properties_window_present (list, GTK_WIDGET (sidebar), NULL, NULL, NULL);
 

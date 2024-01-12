@@ -1,3 +1,20 @@
+Major changes in 45.2.1
+=======================
+
+* Fix a crash in sidebar code (António Fernandes)
+* Fix build without optional cloudproviders dependency (António Fernandes)
+
+Major changes in 45.2
+=====================
+
+* Bugfixes:
+  - Don't crash when reconnecting to remove server (António Fernandes)
+  - Actually detect unmount on some non-native mounts (António Fernandes)
+  - Don't crash on image properties (Khalid Abu Shawarib)
+  - Allow types and sizes in Properties to expand (Peter Eisenmann)
+  - Don't corrupt toast messages (velsinki)
+* Translation updates (GNOME Translation Project contributors)
+
 Major changes in 45.1
 =====================
 
