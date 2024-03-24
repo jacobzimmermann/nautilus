@@ -1013,7 +1013,7 @@ action_search_global (GSimpleAction *action,
 
 static void
 change_files_view_mode (NautilusWindowSlot *self,
-                        guint               view_id
+                        guint               view_id,
                         gboolean            do_save)
 {
     if (!do_save)
