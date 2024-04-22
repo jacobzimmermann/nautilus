@@ -3180,6 +3180,37 @@ slot_active_changed (NautilusWindowSlot *slot,
 }
 
 static gboolean
+nautilus_files_view_focus (GtkWidget        *widget,
+                           GtkDirectionType  direction)
+{
+    NautilusFilesView *self = NAUTILUS_FILES_VIEW (widget);
+    NautilusFilesViewPrivate *priv = nautilus_files_view_get_instance_private (self);
+    g_autoptr (GtkBitset) selection = gtk_selection_model_get_selection (GTK_SELECTION_MODEL (priv->model));
+    gboolean no_selection = gtk_bitset_is_empty (selection);
+    gboolean handled;
+
+    handled = GTK_WIDGET_CLASS (nautilus_files_view_parent_class)->focus (widget, direction);
+
+    if (handled && no_selection)
+    {
+        GtkWidget *focus_widget = gtk_root_get_focus (gtk_widget_get_root (widget));
+
+        /* Workaround for https://gitlab.gnome.org/GNOME/nautilus/-/issues/2489
+         * Also ensures an item gets selected when using <Tab> to focus the view.
+         * Ideally to be fixed in GtkListBase instead. */
+        if (focus_widget != NULL)
+        {
+            gtk_widget_activate_action (focus_widget,
+                                        "listitem.select",
+                                        "(bb)",
+                                        FALSE, FALSE);
+        }
+    }
+
+    return handled;
+}
+
+static gboolean
 nautilus_files_view_grab_focus (GtkWidget *widget)
 {
     /* focus the inner view if it exists */
@@ -5926,6 +5957,56 @@ action_open_scripts_folder (GSimpleAction *action,
                                              location, 0, NULL, NULL, NULL);
 }
 
+static GFile *
+get_dialog_initial_location (NautilusFilesView *view,
+                             GList             *files)
+{
+    NautilusFilesViewPrivate *priv = nautilus_files_view_get_instance_private (view);
+    GFile *location;
+    NautilusFile *file = NAUTILUS_FILE (files->data);
+
+    /* The file dialog will not be able to display the search directory,
+     * so we need to get the base directory of the search if we are, in fact,
+     * in search.
+     */
+    if (nautilus_view_is_searching (NAUTILUS_VIEW (view)))
+    {
+        NautilusSearchDirectory *search = NAUTILUS_SEARCH_DIRECTORY (priv->directory);
+
+        location = nautilus_query_get_location (nautilus_search_directory_get_query (search));
+    }
+    else if (showing_starred_directory (view))
+    {
+        location = nautilus_file_get_parent_location (file);
+    }
+    else if (showing_recent_directory (view))
+    {
+        g_autoptr (GFile) child = nautilus_file_get_activation_location (file);
+
+        location = g_file_get_parent (child);
+    }
+    else if (showing_trash_directory (view))
+    {
+        g_autoptr (NautilusFile) child = nautilus_file_get_trash_original_file (file);
+
+        location = nautilus_file_get_parent_location (child);
+    }
+    else
+    {
+        location = nautilus_directory_get_location (priv->directory);
+        g_autofree gchar *path = g_file_get_path (location);
+
+        if (path == NULL || *path == '\0')
+        {
+            /* Portals will not accept locations with no path, fall back to
+             * null to use the default location. */
+            g_clear_object (&location);
+        }
+    }
+
+    return location;
+}
+
 typedef struct _CopyCallbackData
 {
     NautilusFilesView *view;
@@ -5984,14 +6065,11 @@ static void
 copy_or_move_selection (NautilusFilesView *view,
                         gboolean           is_move)
 {
-    NautilusFilesViewPrivate *priv;
     g_autoptr (GtkFileDialog) dialog = gtk_file_dialog_new ();
     g_autoptr (GFile) location = NULL;
     CopyCallbackData *copy_data;
     GList *selection;
     const gchar *title;
-
-    priv = nautilus_files_view_get_instance_private (view);
 
     if (is_move)
     {
@@ -6012,19 +6090,7 @@ copy_or_move_selection (NautilusFilesView *view,
     copy_data->selection = selection;
     copy_data->is_move = is_move;
 
-    if (nautilus_view_is_searching (NAUTILUS_VIEW (view)))
-    {
-        NautilusSearchDirectory *search = NAUTILUS_SEARCH_DIRECTORY (priv->directory);
-        location = nautilus_query_get_location (nautilus_search_directory_get_query (search));
-    }
-    else if (showing_starred_directory (view))
-    {
-        location = nautilus_file_get_parent_location (NAUTILUS_FILE (selection->data));
-    }
-    else
-    {
-        location = nautilus_directory_get_location (priv->directory);
-    }
+    location = get_dialog_initial_location (view, selection);
 
     gtk_file_dialog_set_initial_folder (dialog, location);
 
@@ -6393,12 +6459,9 @@ static void
 extract_files_to_chosen_location (NautilusFilesView *view,
                                   GList             *files)
 {
-    NautilusFilesViewPrivate *priv;
     ExtractToData *data;
     g_autoptr (GtkFileDialog) dialog = NULL;
     g_autoptr (GFile) location = NULL;
-
-    priv = nautilus_files_view_get_instance_private (view);
 
     if (files == NULL)
     {
@@ -6411,20 +6474,7 @@ extract_files_to_chosen_location (NautilusFilesView *view,
     gtk_file_dialog_set_title (dialog, _("Select Extract Destination"));
     gtk_file_dialog_set_accept_label (dialog, _("_Select"));
 
-    /* The file chooser will not be able to display the search directory,
-     * so we need to get the base directory of the search if we are, in fact,
-     * in search.
-     */
-    if (nautilus_view_is_searching (NAUTILUS_VIEW (view)))
-    {
-        NautilusSearchDirectory *search_directory = NAUTILUS_SEARCH_DIRECTORY (priv->directory);
-
-        location = nautilus_query_get_location (nautilus_search_directory_get_query (search_directory));
-    }
-    else
-    {
-        location = nautilus_directory_get_location (priv->directory);
-    }
+    location = get_dialog_initial_location (view, files);
 
     gtk_file_dialog_set_initial_folder (dialog, location);
 
@@ -9393,6 +9443,7 @@ nautilus_files_view_class_init (NautilusFilesViewClass *klass)
     oclass->get_property = nautilus_files_view_get_property;
     oclass->set_property = nautilus_files_view_set_property;
 
+    widget_class->focus = nautilus_files_view_focus;
     widget_class->grab_focus = nautilus_files_view_grab_focus;
 
 

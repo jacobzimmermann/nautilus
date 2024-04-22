@@ -70,7 +70,7 @@ enum
 
 struct _NautilusWindowSlot
 {
-    AdwBin parent_instance;
+    GtkBox parent_instance;
 
     NautilusWindow *window;
 
@@ -150,7 +150,7 @@ struct _NautilusWindowSlot
 
 static const char *view_type_attr = "xattr::org.gnome.nautilus.view_id";
 
-G_DEFINE_TYPE (NautilusWindowSlot, nautilus_window_slot, ADW_TYPE_BIN);
+G_DEFINE_TYPE (NautilusWindowSlot, nautilus_window_slot, GTK_TYPE_BOX);
 
 static GParamSpec *properties[NUM_PROPERTIES] = { NULL, };
 
@@ -373,6 +373,10 @@ nautilus_window_slot_sync_actions (NautilusWindowSlot *self)
         g_action_change_state (action, variant);
     }
     action = g_action_map_lookup_action (G_ACTION_MAP (self->slot_action_group), "files-view-mode-toggle");
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (action), NAUTILUS_IS_FILES_VIEW (view));
+
+    /* Global search doesn't work with NautilusPlacesView. */
+    action = g_action_map_lookup_action (G_ACTION_MAP (self->slot_action_group), "search-global");
     g_simple_action_set_enabled (G_SIMPLE_ACTION (action), NAUTILUS_IS_FILES_VIEW (view));
 }
 
@@ -866,7 +870,7 @@ nautilus_window_slot_constructed (GObject *object)
     G_OBJECT_CLASS (nautilus_window_slot_parent_class)->constructed (object);
 
     self->stack = gtk_stack_new ();
-    adw_bin_set_child (ADW_BIN (self), self->stack);
+    gtk_box_append (GTK_BOX (self), self->stack);
 
     self->vbox = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
     gtk_stack_add_child (GTK_STACK (self->stack), self->vbox);
@@ -1006,6 +1010,7 @@ action_search_global (GSimpleAction *action,
         }
 
         nautilus_window_slot_set_search_visible (self, search_global);
+        gtk_widget_set_visible (GTK_WIDGET (self->banner), !search_global);
 
         g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_SEARCH_GLOBAL]);
     }
