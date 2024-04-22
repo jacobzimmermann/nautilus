@@ -1421,7 +1421,7 @@ begin_location_change (NautilusWindowSlot         *self,
     /* Get the info needed to make decisions about how to open the new location */
     self->determine_view_file = nautilus_file_get (location);
     g_assert (self->determine_view_file != NULL);
-
+    
     nautilus_file_call_when_ready (self->determine_view_file,
                                    NAUTILUS_FILE_ATTRIBUTE_INFO |
                                    NAUTILUS_FILE_ATTRIBUTE_MOUNT,
