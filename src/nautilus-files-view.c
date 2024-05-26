@@ -681,12 +681,23 @@ update_cut_status_callback (GObject      *source_object,
                             GAsyncResult *res,
                             gpointer      user_data)
 {
-    NautilusFilesView *self = NAUTILUS_FILES_VIEW (user_data);
-    NautilusFilesViewPrivate *priv = nautilus_files_view_get_instance_private (self);
+    NautilusFilesView *self;
+    NautilusFilesViewPrivate *priv;
     const GValue *value;
     GList *cut_files = NULL;
+    g_autoptr (GError) error = NULL;
 
-    value = gdk_clipboard_read_value_finish (GDK_CLIPBOARD (source_object), res, NULL);
+    value = gdk_clipboard_read_value_finish (GDK_CLIPBOARD (source_object), res, &error);
+
+    if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+    {
+        /* The files view has already been disposed, bailout */
+        return;
+    }
+
+    self = NAUTILUS_FILES_VIEW (user_data);
+    priv = nautilus_files_view_get_instance_private (self);
+
     if (value != NULL &&
         G_VALUE_HOLDS (value, NAUTILUS_TYPE_CLIPBOARD))
     {
@@ -774,7 +785,10 @@ static void
 nautilus_files_view_select_first (NautilusFilesView *self)
 {
     NautilusFilesViewPrivate *priv = nautilus_files_view_get_instance_private (self);
-    nautilus_list_base_set_cursor (priv->list_base, 0, TRUE, TRUE);
+    if (g_list_model_get_n_items (G_LIST_MODEL (priv->model)) > 0)
+    {
+        nautilus_list_base_set_cursor (priv->list_base, 0, TRUE, TRUE);
+    }
 }
 
 static void
@@ -4461,10 +4475,13 @@ static void
 display_pending_files (NautilusFilesView *view)
 {
     NautilusFilesViewPrivate *priv = nautilus_files_view_get_instance_private (view);
-    g_autoptr (GtkBitset) selection = gtk_selection_model_get_selection (GTK_SELECTION_MODEL (priv->model));
-    gboolean no_selection = gtk_bitset_is_empty (selection);
+    g_autoptr (GtkBitset) selection = NULL;
+    gboolean no_selection = FALSE;
 
     search_transition_emit_delayed_signals_if_pending (view);
+
+    selection = gtk_selection_model_get_selection (GTK_SELECTION_MODEL (priv->model));
+    no_selection = gtk_bitset_is_empty (selection);
 
     process_pending_files (view);
 

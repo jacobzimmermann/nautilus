@@ -197,6 +197,7 @@ struct _NautilusPropertiesWindow
     guint long_operation_underway;
 
     GList *changed_files;
+    GListStore *extensions_list;
 };
 
 typedef enum
@@ -1457,7 +1458,7 @@ update_combo_row_dropdown (AdwComboRow *row,
 }
 
 typedef gboolean CompareOwnershipRowFunc (GListModel *list,
-                                          guint       position,
+                                          guint position,
                                           const char *str);
 
 static void
@@ -3589,6 +3590,7 @@ refresh_extension_model_pages (NautilusPropertiesWindow *self)
                              (GtkListBoxCreateWidgetFunc) add_extension_model_page,
                              self,
                              NULL);
+    g_set_object (&self->extensions_list, extensions_list);
 }
 
 static gboolean
@@ -3755,9 +3757,6 @@ create_properties_window (StartupData *startup_data)
     {
         gtk_widget_set_visible (GTK_WIDGET (window->execution_row), TRUE);
     }
-
-    /* Add available extension models pages */
-    refresh_extension_model_pages (window);
 
     /* Update from initial state */
     properties_window_update (window, NULL);
@@ -4014,6 +4013,7 @@ real_finalize (GObject *object)
 
     g_free (self->mime_type);
     g_free (self->device_identifier);
+    g_clear_object (&self->extensions_list);
 
     G_OBJECT_CLASS (nautilus_properties_window_parent_class)->finalize (object);
 }
