@@ -229,22 +229,15 @@ on_adjustment_changed (GtkAdjustment   *adjustment,
                        NautilusPathBar *self)
 {
     /* Automatically scroll to the end, to reveal the current folder. */
-    g_autoptr (AdwAnimation) anim = NULL;
-    anim = adw_timed_animation_new (GTK_WIDGET (self),
-                                    gtk_adjustment_get_value (adjustment),
-                                    gtk_adjustment_get_upper (adjustment),
-                                    800,
-                                    adw_property_animation_target_new (G_OBJECT (adjustment), "value"));
-    adw_timed_animation_set_easing (ADW_TIMED_ANIMATION (anim), ADW_EASE_OUT_CUBIC);
-    adw_animation_play (anim);
-}
+    GtkWidget *last = gtk_widget_get_last_child (self->buttons_box);
+    GtkViewport *viewport;
 
-static void
-on_page_size_changed (GtkAdjustment *adjustment)
-{
-    /* When window is resized, immediately set new value, otherwise we would get
-     * an underflow gradient for an moment. */
-    gtk_adjustment_set_value (adjustment, gtk_adjustment_get_upper (adjustment));
+    viewport = GTK_VIEWPORT (gtk_scrolled_window_get_child (GTK_SCROLLED_WINDOW (self->scrolled)));
+
+    if (last != NULL)
+    {
+        gtk_viewport_scroll_to (viewport, last, NULL);
+    }
 }
 
 static gboolean
@@ -256,11 +249,37 @@ bind_current_view_menu_model_to_popover (NautilusPathBar *self)
     return G_SOURCE_REMOVE;
 }
 
+static gboolean
+on_scroll (GtkEventControllerScroll *scroll,
+           gdouble                   dx,
+           gdouble                   dy,
+           GtkScrolledWindow        *self)
+{
+    GtkAdjustment *hadjustment;
+    gdouble step;
+    gdouble new_value;
+
+    if (dy == 0)
+    {
+        return GDK_EVENT_PROPAGATE;
+    }
+
+    /* Scroll horizontally when vertically scrolled */
+    hadjustment = gtk_scrolled_window_get_hadjustment (self);
+    step = gtk_adjustment_get_step_increment (hadjustment);
+    new_value = gtk_adjustment_get_value (hadjustment) + dy * step;
+    gtk_adjustment_set_value (hadjustment, new_value);
+
+    return GDK_EVENT_STOP;
+}
+
+
 static void
 nautilus_path_bar_init (NautilusPathBar *self)
 {
     GtkAdjustment *adjustment;
     GtkBuilder *builder;
+    GtkEventController *controller;
     g_autoptr (GError) error = NULL;
 
     self->os_name = g_get_os_info (G_OS_INFO_KEY_NAME);
@@ -275,7 +294,10 @@ nautilus_path_bar_init (NautilusPathBar *self)
 
     adjustment = gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (self->scrolled));
     g_signal_connect (adjustment, "changed", G_CALLBACK (on_adjustment_changed), self);
-    g_signal_connect (adjustment, "notify::page-size", G_CALLBACK (on_page_size_changed), self);
+
+    controller = gtk_event_controller_scroll_new (GTK_EVENT_CONTROLLER_SCROLL_VERTICAL);
+    gtk_widget_add_controller (GTK_WIDGET (self->scrolled), controller);
+    g_signal_connect (controller, "scroll", G_CALLBACK (on_scroll), self->scrolled);
 
     self->buttons_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (self->scrolled), self->buttons_box);
@@ -787,9 +809,15 @@ on_drag_motion (GtkDropTarget *target,
                 gpointer       user_data)
 {
     ButtonData *button_data = user_data;
+    NautilusPathBar *self = button_data->path_bar;
     GdkDragAction action = 0;
     const GValue *value;
     graphene_point_t start;
+
+    if (nautilus_window_slot_get_mode (self->slot) != NAUTILUS_MODE_BROWSE)
+    {
+        gtk_drop_target_reject (target);
+    }
 
     value = gtk_drop_target_get_value (target);
     if (value == NULL)
@@ -829,7 +857,7 @@ on_drag_leave (GtkDropTarget *target,
     remove_switch_location_timer (user_data);
 }
 
-static void
+static gboolean
 on_drag_drop (GtkDropTarget *target,
               const GValue  *value,
               gdouble        x,
@@ -842,7 +870,12 @@ on_drag_drop (GtkDropTarget *target,
     g_autoptr (GFile) target_location = NULL;
     GdkDragAction action;
 
-    g_return_if_fail (self->slot != NULL);
+    g_return_val_if_fail (self->slot != NULL, FALSE);
+
+    if (nautilus_window_slot_get_mode (self->slot) != NAUTILUS_MODE_BROWSE)
+    {
+        return FALSE;
+    }
 
     target_location = nautilus_file_get_location (button_data->file);
     target_view = NAUTILUS_FILES_VIEW (nautilus_window_slot_get_current_view (self->slot));
@@ -859,7 +892,7 @@ on_drag_drop (GtkDropTarget *target,
     }
     #endif
 
-    nautilus_dnd_perform_drop (target_view, value, action, target_location);
+    return nautilus_dnd_perform_drop (target_view, value, action, target_location);
 }
 
 static GIcon *

@@ -7,6 +7,7 @@
     <property name="height-request">348</property>
     <property name="default-width">890</property>
     <property name="default-height">550</property>
+    <property name="default-widget">accept_button</property>
     <property name="content">
       <object class="NautilusShortcutManager">
         <property name="child">
@@ -36,22 +37,27 @@
                       <object class="NautilusGtkPlacesSidebar" id="places_sidebar">
                         <property name="vexpand">true</property>
                         <property name="window-slot"
-                                  bind-source="slot_container" bind-property="content" bind-flags="sync-create"/>
+                                  bind-source="slot_container" bind-property="child" bind-flags="sync-create"/>
                       </object>
                     </property>
                   </object>
                 </property>
                 <property name="content">
-                  <object class="AdwToolbarView" id="slot_container">
+                  <object class="AdwToolbarView">
                     <child type="top">
                       <object class="NautilusToolbar" id="toolbar">
-                        <property name="show-toolbar-children">true</property>
+                        <property name="show-history-controls">true</property>
                         <property name="window-slot"
-                                  bind-source="slot_container" bind-property="content" bind-flags="sync-create"/>
+                                  bind-source="slot_container" bind-property="child" bind-flags="sync-create"/>
                         <property name="show-new-folder-button"
                                   bind-source="new_folder_button" bind-property="visible" bind-flags="sync-create"/>
+                        <property name="show-view-controls"
+                                  bind-source="view_controls" bind-property="visible" bind-flags="sync-create"/>
                       </object>
                     </child>
+                    <property name="content">
+                      <object class="AdwBin" id="slot_container"/>
+                    </property>
                     <child type="bottom">
                       <object class="AdwMultiLayoutView" id="bottom_toolbar">
                         <child>
@@ -59,24 +65,16 @@
                             <property name="name">wide</property>
                             <property name="content">
                               <object class="GtkCenterBox">
-                                <style>
-                                  <class name="toolbar"/>
-                                </style>
                                 <child type="start">
                                   <object class="GtkBox">
                                     <style>
                                       <class name="toolbar"/>
                                     </style>
                                     <child>
-                                      <object class="GtkDropDown" id="filters_dropdown">
-                                        <property name="valign">center</property>
-                                        <property name="tooltip-text" translatable="yes">Visible Files Filter</property>
-                                        <property name="expression">
-                                          <lookup type="GtkFileFilter" name="name"/>
-                                        </property>
-                                        <style>
-                                          <class name="flat-dropdown"/>
-                                        </style>
+                                      <object class="AdwLayoutSlot">
+                                        <property name="id">filter-dropdown</property>
+                                        <property name="visible"
+                                                  bind-source="filters_dropdown" bind-property="visible" bind-flags="sync-create"/>
                                       </object>
                                     </child>
                                   </object>
@@ -95,6 +93,8 @@
                                       <object class="AdwLayoutSlot">
                                         <property name="id">choices-menu-button</property>
                                         <property name="valign">center</property>
+                                        <property name="visible"
+                                                  bind-source="choices_menu_button" bind-property="visible" bind-flags="sync-create"/>
                                       </object>
                                     </child>
                                     <child>
@@ -119,6 +119,10 @@
                                     <property name="id">filename-widget</property>
                                     <property name="visible"
                                               bind-source="filename_widget" bind-property="visible" bind-flags="sync-create"/>
+                                    <style>
+                                      <class name="toolbar"/>
+                                      <class name="no-bottom-padding"/>
+                                    </style>
                                   </object>
                                 </child>
                                 <child>
@@ -148,13 +152,18 @@
                                             </child>
                                           </object>
                                         </child>
+                                        <child>
+                                          <object class="AdwLayoutSlot">
+                                            <property name="id">filter-dropdown</property>
+                                            <property name="visible"
+                                                      bind-source="filters_dropdown" bind-property="visible" bind-flags="sync-create"/>
+                                          </object>
+                                        </child>
                                       </object>
                                     </child>
                                     <child type="center">
                                       <object class="AdwLayoutSlot">
                                         <property name="id">accept-button</property>
-                                        <property name="margin-top">6</property>
-                                        <property name="margin-bottom">6</property>
                                       </object>
                                     </child>
                                     <child type="end">
@@ -174,6 +183,14 @@
                                         <child>
                                           <object class="AdwLayoutSlot">
                                             <property name="id">choices-menu-button</property>
+                                            <property name="visible"
+                                                      bind-source="choices_menu_button" bind-property="visible" bind-flags="sync-create"/>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="NautilusViewControls" id="view_controls">
+                                            <property name="window-slot"
+                                              bind-source="slot_container" bind-property="child" bind-flags="sync-create"/>
                                           </object>
                                         </child>
                                       </object>
@@ -199,6 +216,11 @@
                                             handler="open_filename_entry" object="NautilusFileChooser" swapped="yes"/>
                                     <property name="child">
                                       <object class="GtkCenterBox">
+                                      <child type="start">
+                                        <!-- Center the label and don't overlap the overlay -->
+                                        <object class="AdwBin" id="filename_button_start">
+                                        </object>
+                                      </child>
                                       <child type="center">
                                         <object class="GtkLabel" id="filename_label">
                                           <property name="label" bind-source="filename_entry" bind-property="text" bind-flags="sync-create"/>
@@ -206,7 +228,7 @@
                                         </object>
                                       </child>
                                       <child type="end">
-                                        <object class="GtkImage">
+                                        <object class="GtkImage" id="filename_button_end">
                                           <property name="margin-start">12</property>
                                           <property name="icon-name">document-edit-symbolic</property>
                                         </object>
@@ -223,6 +245,9 @@
                                     <property name="halign">start</property>
                                     <signal name="clicked"
                                             handler="on_filename_undo_button_clicked" object="NautilusFileChooser" swapped="yes"/>
+                                    <style>
+                                      <class name="flat"/>
+                                    </style>
                                   </object>
                                 </child>
                               </object>
@@ -232,6 +257,7 @@
                                 <property name="tooltip-text" translatable="yes">File Name</property>
                                 <property name="valign">center</property>
                                 <property name="max-width-chars">30</property>
+                                <property name="activates-default">true</property>
                                 <signal name="changed"
                                         handler="on_filename_entry_changed" object="NautilusFileChooser" swapped="yes"/>
                                 <child>
@@ -248,13 +274,17 @@
                           <object class="GtkButton" id="accept_button">
                             <property name="label">_Select</property>
                             <property name="use-underline">true</property>
+                            <property name="margin-top">6</property>
+                            <property name="margin-bottom">6</property>
+                            <property name="margin-start">6</property>
+                            <property name="margin-end">6</property>
                             <binding name="sensitive">
                               <closure type="gboolean" function="nautilus_file_chooser_can_accept">
                                 <lookup type="NautilusWindowSlot" name="selection">
-                                  <lookup name="content">slot_container</lookup>
+                                  <lookup name="child">slot_container</lookup>
                                 </lookup>
                                 <lookup type="NautilusWindowSlot" name="location">
-                                  <lookup name="content">slot_container</lookup>
+                                  <lookup name="child">slot_container</lookup>
                                 </lookup>
                                 <lookup name="passed">validator</lookup>
                               </closure>
@@ -269,17 +299,47 @@
                         <child type="choices-menu-button">
                           <object class="GtkMenuButton" id="choices_menu_button">
                             <property name="icon-name">nautilus-file-chooser-options-symbolic</property>
-                            <property name="tooltip-text" translatable="yes">Show Options</property>
-                            <property name="popover">
-                              <object class="GtkPopover">
-                                <property name="child">
-                                  <object class="GtkCheckButton" id="read_only_checkbox">
-                                    <property name="label" translatable="yes">Open _Read-Only</property>
-                                    <property name="use-underline">true</property>
-                                  </object>
-                                </property>
+                            <property name="tooltip-text" translatable="yes" comments="Translators: 'Show' is a verb"
+                              context="File Chooser tooltips">Show Options</property>
+                          </object>
+                        </child>
+                        <child type="filter-dropdown">
+                          <object class="GtkDropDown" id="filters_dropdown">
+                            <property name="valign">center</property>
+                            <property name="tooltip-text" translatable="yes">Visible Files Filter</property>
+                            <property name="factory">
+                              <object class="GtkBuilderListItemFactory">
+                                <property name="bytes"><![CDATA[
+<interface>
+  <template class="GtkListItem">
+    <property name="child">
+      <object class="GtkLabel">
+        <property name="xalign">0</property>
+        <property name="width-chars">6</property>
+        <property name="max-width-chars">16</property>
+        <property name="ellipsize">middle</property>
+        <binding name="label">
+          <lookup name="name" type="GtkFileFilter">
+            <lookup name="item">GtkListItem</lookup>
+          </lookup>
+        </binding>
+      </object>
+    </property>
+  </template>
+</interface>
+                                ]]></property>
                               </object>
                             </property>
+                            <style>
+                              <class name="flat-dropdown"/>
+                            </style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkDropTarget">
+                            <property name="actions">copy</property>
+                            <property name="formats">GdkFileList</property>
+                            <signal name="drop" handler="on_file_drop"/>
                           </object>
                         </child>
                       </object>
@@ -297,7 +357,10 @@
         <condition>max-width: 682sp</condition>
         <setter object="split_view" property="collapsed">true</setter>
         <setter object="toolbar" property="show-new-folder-button">false</setter>
+        <setter object="toolbar" property="show-view-controls">false</setter>
         <setter object="bottom_toolbar" property="layout-name">narrow</setter>
+        <setter object="filters_dropdown" property="show-arrow">false</setter>
+        <setter object="filters_dropdown" property="factory">builder_list_item_image</setter>
       </object>
     </child>
     <child>
@@ -314,9 +377,29 @@
   </template>
   <object class="NautilusFilenameValidator" id="validator">
     <property name="allow-overwrite">true</property>
-    <property name="new-name" bind-source="filename_entry" bind-property="text"/>
+    <property name="new-name" bind-source="filename_entry" bind-property="text" bind-flags="sync-create"/>
     <signal name="notify::has-feedback" handler="on_validator_has_feedback_changed" swapped="yes"/>
     <signal name="notify::will-overwrite" handler="on_validator_will_overwrite_changed" swapped="yes"/>
+  </object>
+  <object class="GtkBuilderListItemFactory" id="builder_list_item_image">
+    <property name="bytes"><![CDATA[
+<interface>
+  <template class="GtkListItem">
+    <property name="child">
+      <object class="GtkImage">
+        <property name="icon-name">funnel-outline-symbolic</property>
+      </object>
+    </property>
+  </template>
+</interface>
+    ]]></property>
+  </object>
+  <object class="GtkSizeGroup">
+    <widgets>
+      <widget name="filename_button_start"/>
+      <widget name="filename_button_end"/>
+      <widget name="filename_undo_button"/>
+    </widgets>
   </object>
 </interface>
 

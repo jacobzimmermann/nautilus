@@ -39,7 +39,7 @@ struct _NautilusFileChooser
     GtkWidget *split_view;
     GtkWidget *places_sidebar;
     NautilusToolbar *toolbar;
-    AdwToolbarView *slot_container;
+    AdwBin *slot_container;
     NautilusWindowSlot *slot;
     GtkDropDown *filters_dropdown;
     GtkWidget *choices_menu_button;
@@ -176,7 +176,7 @@ nautilus_file_chooser_can_accept (NautilusFileChooser *self,
 {
     if (self->mode == NAUTILUS_MODE_SAVE_FILE)
     {
-        return (filename_passed ||
+        return (filename_passed &&
                 mode_can_accept_current_directory (self->mode, location));
     }
     else
@@ -190,12 +190,9 @@ static void
 emit_accepted (NautilusFileChooser *self,
                GList               *file_locations)
 {
-    gboolean writable = !gtk_check_button_get_active (GTK_CHECK_BUTTON (self->read_only_checkbox));
-
     g_signal_emit (self, signals[SIGNAL_ACCEPTED], 0,
                    file_locations,
-                   GTK_FILE_FILTER (gtk_drop_down_get_selected_item (self->filters_dropdown)),
-                   writable);
+                   GTK_FILE_FILTER (gtk_drop_down_get_selected_item (self->filters_dropdown)));
 }
 
 static void
@@ -330,6 +327,40 @@ update_cursor (NautilusFileChooser *self)
 }
 
 static void
+on_file_drop (GtkDropTarget *target,
+              const GValue  *value,
+              gdouble        x,
+              gdouble        y,
+              gpointer       user_data)
+{
+    GSList *locations = g_value_get_boxed (value);
+    g_autolist (NautilusFile) selection = NULL;
+    g_autoptr (GFile) location = NULL;
+    NautilusFileChooser *self = user_data;
+
+    for (GSList *l = locations; l != NULL; l = l->next)
+    {
+        selection = g_list_prepend (selection, nautilus_file_get (l->data));
+    }
+
+    selection = g_list_reverse (selection);
+
+    if (nautilus_file_opens_in_view (selection->data) &&
+        self->mode != NAUTILUS_MODE_OPEN_FOLDER &&
+        self->mode != NAUTILUS_MODE_OPEN_FOLDERS)
+    {
+        /* If it's a folder go into the folder unless you want to open that folder */
+        location = g_object_ref (locations->data);
+    }
+    else
+    {
+        location = g_file_get_parent (locations->data);
+    }
+
+    nautilus_window_slot_open_location_full (self->slot, location, 0, selection);
+}
+
+static void
 on_slot_activate_files (NautilusFileChooser *self,
                         GList               *files)
 {
@@ -412,8 +443,19 @@ on_slot_selection_notify (NautilusFileChooser *self)
 static void
 on_location_changed (NautilusFileChooser *self)
 {
+    if (self->mode != NAUTILUS_MODE_SAVE_FILE)
+    {
+        return;
+    }
+
     g_autoptr (NautilusDirectory) directory = NULL;
     GFile *location = nautilus_window_slot_get_location (self->slot);
+    g_autofree char *scheme = g_file_get_uri_scheme (location);
+
+    if (nautilus_scheme_is_internal (scheme))
+    {
+        return;
+    }
 
     directory = nautilus_directory_get (location);
     nautilus_filename_validator_set_containing_directory (self->validator, directory);
@@ -461,18 +503,79 @@ on_click_gesture_pressed (GtkGestureClick *gesture,
 }
 
 static void
+update_dropdown_checkmark (GtkDropDown *dropdown,
+                           GParamSpec  *psepc,
+                           GtkListItem *list_item)
+{
+    guint selected = gtk_drop_down_get_selected (dropdown);
+    GtkWidget *cell = gtk_list_item_get_child (list_item);
+    GtkWidget *check_mark = gtk_widget_get_last_child (cell);
+    gdouble opacity = (selected == gtk_list_item_get_position (list_item)) ? 1 : 0;
+
+    gtk_widget_set_opacity (check_mark, opacity);
+}
+
+static void
+filters_dropdown_setup (GtkListItemFactory *factory,
+                        GtkListItem        *list_item,
+                        gpointer            user_data)
+{
+    GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+    GtkWidget *label = gtk_label_new (NULL);
+    GtkWidget *icon;
+
+    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+    gtk_box_append (GTK_BOX (box), label);
+    icon = g_object_new (GTK_TYPE_IMAGE,
+                         "icon-name", "object-select-symbolic",
+                         "accessible-role", GTK_ACCESSIBLE_ROLE_PRESENTATION,
+                         NULL);
+    gtk_box_append (GTK_BOX (box), icon);
+    gtk_list_item_set_child (list_item, box);
+
+    g_assert (gtk_widget_get_first_child (box) == label &&
+              gtk_widget_get_last_child (box) == icon);
+}
+
+static void
+filters_dropdown_bind (GtkListItemFactory *factory,
+                       GtkListItem        *list_item,
+                       gpointer            user_data)
+{
+    NautilusFileChooser *self = user_data;
+    GtkFileFilter *filter = gtk_list_item_get_item (list_item);
+    GtkWidget *cell = gtk_list_item_get_child (list_item);
+    GtkWidget *label = gtk_widget_get_first_child (cell);
+
+    gtk_label_set_label (GTK_LABEL (label), gtk_file_filter_get_name (filter));
+
+    g_signal_connect (self->filters_dropdown, "notify::selected", G_CALLBACK (update_dropdown_checkmark), list_item);
+    update_dropdown_checkmark (self->filters_dropdown, NULL, list_item);
+}
+
+static void
+filters_dropdown_unbind (GtkListItemFactory *factory,
+                         GtkListItem        *list_item,
+                         gpointer            user_data)
+{
+    NautilusFileChooser *self = user_data;
+
+    g_signal_handlers_disconnect_by_func (self->filters_dropdown, update_dropdown_checkmark, list_item);
+}
+
+static void
 nautilus_file_chooser_dispose (GObject *object)
 {
     NautilusFileChooser *self = (NautilusFileChooser *) object;
 
     if (self->slot != NULL)
     {
-        g_assert (adw_toolbar_view_get_content (self->slot_container) == GTK_WIDGET (self->slot));
+        g_assert (adw_bin_get_child (self->slot_container) == GTK_WIDGET (self->slot));
 
         nautilus_window_slot_set_active (self->slot, FALSE);
         /* Let bindings on AdwToolbarView:content react to the slot being unset
          * while the slot itself is still alive. */
-        adw_toolbar_view_set_content (self->slot_container, NULL);
+        adw_bin_set_child (self->slot_container, NULL);
         g_clear_object (&self->slot);
     }
 
@@ -536,6 +639,19 @@ nautilus_file_chooser_set_property (GObject      *object,
     }
 }
 
+static gboolean
+nautilus_file_chooser_grab_focus (GtkWidget *widget)
+{
+    NautilusFileChooser *self = NAUTILUS_FILE_CHOOSER (widget);
+
+    if (self->slot != NULL)
+    {
+        return gtk_widget_grab_focus (GTK_WIDGET (self->slot));
+    }
+
+    return GTK_WIDGET_CLASS (nautilus_file_chooser_parent_class)->grab_focus (widget);
+}
+
 static void
 nautilus_file_chooser_constructed (GObject *object)
 {
@@ -547,7 +663,7 @@ nautilus_file_chooser_constructed (GObject *object)
      * We hold a reference to control its lifetime with relation to bindings. */
     self->slot = g_object_ref (nautilus_window_slot_new (self->mode));
     g_signal_connect_swapped (self->slot, "notify::location", G_CALLBACK (on_location_changed), self);
-    adw_toolbar_view_set_content (self->slot_container, GTK_WIDGET (self->slot));
+    adw_bin_set_child (self->slot_container, GTK_WIDGET (self->slot));
     nautilus_window_slot_set_active (self->slot, TRUE);
     g_signal_connect_swapped (self->slot, "notify::allow-stop",
                               G_CALLBACK (update_cursor), self);
@@ -564,10 +680,6 @@ nautilus_file_chooser_constructed (GObject *object)
     gtk_widget_set_visible (self->filename_widget,
                             (self->mode == NAUTILUS_MODE_SAVE_FILE));
 
-    gtk_widget_set_visible (self->choices_menu_button,
-                            (self->mode != NAUTILUS_MODE_SAVE_FILE &&
-                             self->mode != NAUTILUS_MODE_SAVE_FILES));
-
     gtk_widget_set_visible (self->new_folder_button,
                             (self->mode == NAUTILUS_MODE_SAVE_FILE ||
                              self->mode == NAUTILUS_MODE_SAVE_FILES));
@@ -577,6 +689,11 @@ nautilus_file_chooser_constructed (GObject *object)
         g_signal_connect_object (self->slot, "notify::selection",
                                  G_CALLBACK (on_slot_selection_notify), self,
                                  G_CONNECT_SWAPPED);
+    }
+
+    if (g_strcmp0 (PROFILE, "") != 0)
+    {
+        gtk_widget_add_css_class (GTK_WIDGET (self), "devel");
     }
 }
 
@@ -609,6 +726,14 @@ nautilus_file_chooser_init (NautilusFileChooser *self)
     gtk_event_controller_set_propagation_phase (controller, GTK_PHASE_CAPTURE);
     gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (controller), 0);
     g_signal_connect (controller, "pressed", G_CALLBACK (on_click_gesture_pressed), self);
+
+    /* The factory is set in the ui, but we need to set the popup (list) factory
+     * in code to make the checkmark appear correctly. */
+    GtkListItemFactory *factory = gtk_signal_list_item_factory_new ();
+    g_signal_connect (factory, "setup", G_CALLBACK (filters_dropdown_setup), self);
+    g_signal_connect (factory, "bind", G_CALLBACK (filters_dropdown_bind), self);
+    g_signal_connect (factory, "unbind", G_CALLBACK (filters_dropdown_unbind), self);
+    gtk_drop_down_set_list_factory (self->filters_dropdown, factory);
 }
 
 static void
@@ -623,6 +748,8 @@ nautilus_file_chooser_class_init (NautilusFileChooserClass *klass)
     object_class->get_property = nautilus_file_chooser_get_property;
     object_class->set_property = nautilus_file_chooser_set_property;
 
+    widget_class->grab_focus = nautilus_file_chooser_grab_focus;
+
     gtk_widget_class_set_template_from_resource (widget_class,
                                                  "/org/gnome/nautilus/ui/nautilus-file-chooser.ui");
     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, split_view);
@@ -631,7 +758,6 @@ nautilus_file_chooser_class_init (NautilusFileChooserClass *klass)
     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, slot_container);
     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, filters_dropdown);
     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, choices_menu_button);
-    gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, read_only_checkbox);
     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, accept_button);
     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, filename_widget);
     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, filename_button_container);
@@ -649,6 +775,7 @@ nautilus_file_chooser_class_init (NautilusFileChooserClass *klass)
     gtk_widget_class_bind_template_callback (widget_class, nautilus_filename_validator_validate);
     gtk_widget_class_bind_template_callback (widget_class, on_validator_has_feedback_changed);
     gtk_widget_class_bind_template_callback (widget_class, on_validator_will_overwrite_changed);
+    gtk_widget_class_bind_template_callback (widget_class, on_file_drop);
 
     properties[PROP_MODE] =
         g_param_spec_enum ("mode", NULL, NULL,
@@ -661,8 +788,8 @@ nautilus_file_chooser_class_init (NautilusFileChooserClass *klass)
                       G_TYPE_FROM_CLASS (object_class),
                       G_SIGNAL_RUN_LAST, 0, NULL, NULL,
                       NULL,
-                      G_TYPE_NONE, 3,
-                      G_TYPE_POINTER, GTK_TYPE_FILE_FILTER, G_TYPE_BOOLEAN);
+                      G_TYPE_NONE, 2,
+                      G_TYPE_POINTER, GTK_TYPE_FILE_FILTER);
 }
 
 NautilusFileChooser *
@@ -729,4 +856,17 @@ nautilus_file_chooser_set_suggested_name (NautilusFileChooser *self,
     {
         gtk_editable_set_text (GTK_EDITABLE (self->filename_entry), suggested_name);
     }
+}
+
+void
+nautilus_file_chooser_add_choices (NautilusFileChooser *self,
+                                   GActionGroup        *action_group,
+                                   GMenuModel          *menu)
+{
+    gboolean visible = g_menu_model_get_n_items (menu) > 0;
+
+    gtk_widget_insert_action_group (GTK_WIDGET (self), "choices", action_group);
+    gtk_menu_button_set_menu_model (GTK_MENU_BUTTON (self->choices_menu_button), menu);
+
+    gtk_widget_set_visible (self->choices_menu_button, visible);
 }

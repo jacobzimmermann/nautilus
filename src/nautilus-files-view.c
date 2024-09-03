@@ -1310,8 +1310,6 @@ static void
 nautilus_files_view_preview_update (NautilusFilesView *view)
 {
     NautilusFilesViewPrivate *priv = nautilus_files_view_get_instance_private (view);
-    GtkApplication *app;
-    GtkRoot *window;
     g_autolist (NautilusFile) selection = NULL;
 
     if (!priv->active ||
@@ -1320,9 +1318,7 @@ nautilus_files_view_preview_update (NautilusFilesView *view)
         return;
     }
 
-    app = GTK_APPLICATION (g_application_get_default ());
-    window = gtk_widget_get_root (GTK_WIDGET (view));
-    if (window == NULL || GTK_WINDOW (window) != gtk_application_get_active_window (app))
+    if (gtk_widget_get_root (GTK_WIDGET (view)) == NULL)
     {
         return;
     }
@@ -1335,7 +1331,7 @@ nautilus_files_view_preview_update (NautilusFilesView *view)
 
     g_autofree gchar *uri = nautilus_file_get_uri (selection->data);
 
-    nautilus_previewer_call_show_file (uri, window, FALSE);
+    nautilus_previewer_call_show_file (uri, priv->slot, FALSE);
 }
 
 void
@@ -1839,14 +1835,14 @@ action_preview_selection (GSimpleAction *action,
                           gpointer       user_data)
 {
     NautilusFilesView *view = NAUTILUS_FILES_VIEW (user_data);
+    NautilusFilesViewPrivate *priv = nautilus_files_view_get_instance_private (view);
     g_autolist (NautilusFile) selection = NULL;
-    GtkRoot *window = gtk_widget_get_root (GTK_WIDGET (view));
 
     selection = nautilus_view_get_selection (NAUTILUS_VIEW (view));
 
     g_autofree gchar *uri = nautilus_file_get_uri (selection->data);
 
-    nautilus_previewer_call_show_file (uri, window, TRUE);
+    nautilus_previewer_call_show_file (uri, priv->slot, TRUE);
 }
 
 static void
@@ -8046,7 +8042,8 @@ real_update_actions_state (NautilusFilesView *view)
                                          "select-all");
     g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
                                  !nautilus_files_view_is_empty (view) &&
-                                 !priv->loading);
+                                 !priv->loading &&
+                                 !nautilus_view_model_get_single_selection (priv->model));
 
     /* Toolbar menu actions */
     g_action_group_change_action_state (view_action_group,
@@ -8296,8 +8293,7 @@ update_selection_menu (NautilusFilesView *view,
                                               "open_in_view_submenu");
     nautilus_g_menu_replace_string_in_item (G_MENU (object), i,
                                             "hidden-when",
-                                            (!item_opens_in_view ||
-                                             mode != NAUTILUS_MODE_BROWSE) ? "action-missing" : NULL);
+                                            !item_opens_in_view ? "action-missing" : NULL);
 
     /* Drives */
     for (l = selection; l != NULL && (show_mount || show_unmount
@@ -8411,12 +8407,6 @@ update_selection_menu (NautilusFilesView *view,
         g_object_unref (menu_item);
     }
 
-    if (mode != NAUTILUS_MODE_BROWSE)
-    {
-        object = gtk_builder_get_object (builder, "move-copy-section");
-        g_menu_remove_all (G_MENU (object));
-    }
-
     if (!priv->scripts_menu_updated && mode == NAUTILUS_MODE_BROWSE)
     {
         update_scripts_menu (view, builder);
@@ -8438,19 +8428,11 @@ update_selection_menu (NautilusFilesView *view,
                                             "hidden-when",
                                             (!show_scripts) ? "action-missing" : NULL);
 
-    if (NAUTILUS_IS_NETWORK_VIEW (priv->list_base))
-    {
-        object = gtk_builder_get_object (builder, "move-copy-section");
-        g_menu_remove_all (G_MENU (object));
+    const char *view_name = NAUTILUS_IS_NETWORK_VIEW (priv->list_base) ? "network" : "normal";
 
-        object = gtk_builder_get_object (builder, "file-actions-section");
-        g_menu_remove_all (G_MENU (object));
-    }
-    else
-    {
-        object = gtk_builder_get_object (builder, "network-view-section");
-        g_menu_remove_all (G_MENU (object));
-    }
+    /* Filter  the menus at the end to not interfere with other checks */
+    nautilus_g_menu_model_set_for_view (G_MENU_MODEL (priv->selection_menu_model), view_name);
+    nautilus_g_menu_model_set_for_mode (G_MENU_MODEL (priv->selection_menu_model), mode);
 }
 
 static void
@@ -8458,6 +8440,7 @@ update_background_menu (NautilusFilesView *view,
                         GtkBuilder        *builder)
 {
     NautilusFilesViewPrivate *priv = nautilus_files_view_get_instance_private (view);
+    NautilusMode mode = nautilus_window_slot_get_mode (priv->slot);
     GObject *object;
     gboolean remove_submenu = TRUE;
     gint i;
@@ -8497,6 +8480,12 @@ update_background_menu (NautilusFilesView *view,
     nautilus_g_menu_replace_string_in_item (priv->background_menu_model, i,
                                             "hidden-when",
                                             remove_submenu ? "action-missing" : NULL);
+
+    const char *view_name = NAUTILUS_IS_NETWORK_VIEW (priv->list_base) ? "network" : "normal";
+
+    /* Filter  the menus at the end to not interfere with other checks */
+    nautilus_g_menu_model_set_for_view (G_MENU_MODEL (priv->background_menu_model), view_name);
+    nautilus_g_menu_model_set_for_mode (G_MENU_MODEL (priv->background_menu_model), mode);
 }
 
 static void
@@ -8519,10 +8508,10 @@ real_update_context_menus (NautilusFilesView *view)
     priv->selection_menu_model = g_object_ref (G_MENU (object));
 
     update_selection_menu (view, builder);
+    update_background_menu (view, builder);
 
     if (mode == NAUTILUS_MODE_BROWSE)
     {
-        update_background_menu (view, builder);
         update_extensions_menus (view, builder);
     }
 
@@ -8657,11 +8646,6 @@ nautilus_files_view_pop_up_background_context_menu (NautilusFilesView *view,
     g_assert (NAUTILUS_IS_FILES_VIEW (view));
 
     priv = nautilus_files_view_get_instance_private (view);
-
-    if (nautilus_window_slot_get_mode (priv->slot) != NAUTILUS_MODE_BROWSE)
-    {
-        return;
-    }
 
     /* Make the context menu items not flash as they update to proper disabled,
      * etc. states by forcing menus to update now.

@@ -9,11 +9,13 @@
     <item>
       <attribute name="label" translatable="yes">New _Document</attribute>
       <attribute name="nautilus-menu-item">templates-submenu</attribute>
+      <attribute name="show-in-mode">browse</attribute>
       <link name="submenu" id="templates-submenu"/>
     </item>
     <item>
       <attribute name="label" translatable="yes">Open _With…</attribute>
       <attribute name="action">view.open-current-directory-with-other-application</attribute>
+      <attribute name="show-in-mode">browse</attribute>
     </item>
     <item>
       <attribute name="label" translatable="yes">Open in Consol_e</attribute>
@@ -24,6 +26,7 @@
       <item>
         <attribute name="label" translatable="yes">_Paste</attribute>
         <attribute name="action">view.paste</attribute>
+        <attribute name="show-in-mode">browse</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">Paste as _Link</attribute>
@@ -83,6 +86,7 @@
       <item>
         <attribute name="label" translatable="yes">_Open</attribute>
         <attribute name="nautilus-menu-item">open_in_view_submenu</attribute>
+        <attribute name="show-in-mode">browse</attribute>
         <link name="submenu">
           <section>
             <item>
@@ -121,6 +125,8 @@
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
       <submenu>
+        <attribute name="show-in-mode">browse</attribute>
+        <attribute name="show-in-view">normal</attribute>
         <attribute name="label" translatable="yes">_Scripts</attribute>
         <attribute name="nautilus-menu-item">scripts-submenu</attribute>
         <section id="scripts-submenu-section"/>
@@ -166,6 +172,8 @@
       </item>
     </section>
     <section id="move-copy-section">
+      <attribute name="show-in-mode">browse</attribute>
+      <attribute name="show-in-view">normal</attribute>
       <item>
         <attribute name="label" translatable="yes">Cu_t</attribute>
         <attribute name="action">view.cut</attribute>
@@ -184,6 +192,7 @@
       </item>
     </section>
     <section id="file-actions-section">
+      <attribute name="show-in-view">normal</attribute>
       <item>
         <attribute name="label" translatable="yes">Rena_me…</attribute>
         <attribute name="action">view.rename</attribute>
@@ -250,6 +259,7 @@
       </item>
     </section>
     <section id="network-view-section">
+      <attribute name="show-in-view">network</attribute>
       <item>
         <attribute name="label" translatable="yes">_Copy Address</attribute>
         <attribute name="action">view.copy-network-address</attribute>
