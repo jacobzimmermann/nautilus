@@ -28,6 +28,8 @@
 #include "nautilus-view-item-filter.h"
 #include "nautilus-window-slot.h"
 
+#define FILTER_WIDTH_CHARS 12
+
 struct _NautilusFileChooser
 {
     AdwWindow parent_instance;
@@ -50,8 +52,10 @@ struct _NautilusFileChooser
     GtkWidget *filename_undo_button;
     GtkWidget *filename_entry;
     GtkWidget *new_folder_button;
+    GtkWidget *title_widget;
 
     NautilusFilenameValidator *validator;
+    AdwBreakpoint *breakpoint;
 };
 
 G_DEFINE_FINAL_TYPE (NautilusFileChooser, nautilus_file_chooser, ADW_TYPE_WINDOW)
@@ -397,7 +401,8 @@ static void
 on_filename_entry_changed (NautilusFileChooser *self)
 {
     const char *current_text = gtk_editable_get_text (GTK_EDITABLE (self->filename_entry));
-    gboolean is_not_suggested_text = (g_strcmp0 (self->suggested_name, current_text) != 0);
+    gboolean is_not_suggested_text = (g_strcmp0 (self->suggested_name, current_text) != 0 &&
+                                      self->suggested_name != NULL);
 
     gtk_widget_set_visible (self->filename_undo_button, is_not_suggested_text);
 
@@ -502,6 +507,13 @@ on_click_gesture_pressed (GtkGestureClick *gesture,
     }
 }
 
+static int
+get_filter_width_chars (GtkListItem *listitem,
+                        const char  *name)
+{
+    return MIN (g_utf8_strlen (name, -1), FILTER_WIDTH_CHARS);
+}
+
 static void
 update_dropdown_checkmark (GtkDropDown *dropdown,
                            GParamSpec  *psepc,
@@ -562,6 +574,27 @@ filters_dropdown_unbind (GtkListItemFactory *factory,
 
     g_signal_handlers_disconnect_by_func (self->filters_dropdown, update_dropdown_checkmark, list_item);
 }
+
+static gboolean
+title_widget_query_tooltip (GtkWidget  *widget,
+                            gint        x,
+                            gint        y,
+                            gboolean    keyboard_mode,
+                            GtkTooltip *tooltip,
+                            gpointer    user_data)
+{
+    PangoLayout *layout = gtk_label_get_layout (GTK_LABEL (widget));
+
+    if (pango_layout_is_ellipsized (layout))
+    {
+        const char *label = gtk_label_get_label (GTK_LABEL (widget));
+        gtk_tooltip_set_text (tooltip, label);
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
 
 static void
 nautilus_file_chooser_dispose (GObject *object)
@@ -682,7 +715,13 @@ nautilus_file_chooser_constructed (GObject *object)
 
     gtk_widget_set_visible (self->new_folder_button,
                             (self->mode == NAUTILUS_MODE_SAVE_FILE ||
-                             self->mode == NAUTILUS_MODE_SAVE_FILES));
+                             self->mode == NAUTILUS_MODE_SAVE_FILES ||
+                             self->mode == NAUTILUS_MODE_OPEN_FOLDER ||
+                             self->mode == NAUTILUS_MODE_OPEN_FOLDERS));
+
+    /* Add the setter here once the new folder property is set */
+    adw_breakpoint_add_setters (self->breakpoint, G_OBJECT (self->toolbar),
+                                "show-new-folder-button", FALSE, NULL);
 
     if (self->mode == NAUTILUS_MODE_SAVE_FILE)
     {
@@ -695,6 +734,16 @@ nautilus_file_chooser_constructed (GObject *object)
     {
         gtk_widget_add_css_class (GTK_WIDGET (self), "devel");
     }
+
+    gtk_widget_add_css_class (self->title_widget, "windowtitle");
+    gtk_widget_add_css_class (self->title_widget, "title");
+    g_signal_connect (self->title_widget, "query-tooltip",
+                      G_CALLBACK (title_widget_query_tooltip), self);
+
+    int width, height;
+    g_settings_get (nautilus_window_state, NAUTILUS_WINDOW_STATE_INITIAL_SIZE_FILE_CHOOSER,
+                    "(ii)", &width, &height);
+    gtk_window_set_default_size (GTK_WINDOW (self), width, height);
 }
 
 static void
@@ -715,6 +764,8 @@ nautilus_file_chooser_init (NautilusFileChooser *self)
     /* Setup sidebar */
     nautilus_gtk_places_sidebar_set_open_flags (NAUTILUS_GTK_PLACES_SIDEBAR (self->places_sidebar),
                                                 NAUTILUS_OPEN_FLAG_NORMAL);
+    nautilus_gtk_places_sidebar_set_show_trash (NAUTILUS_GTK_PLACES_SIDEBAR (self->places_sidebar),
+                                                FALSE);
 
     GtkEventController *controller = gtk_event_controller_key_new ();
     gtk_widget_add_controller (GTK_WIDGET (self), controller);
@@ -765,6 +816,8 @@ nautilus_file_chooser_class_init (NautilusFileChooserClass *klass)
     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, filename_entry);
     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, new_folder_button);
     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, validator);
+    gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, title_widget);
+    gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, breakpoint);
 
     gtk_widget_class_bind_template_callback (widget_class, nautilus_file_chooser_can_accept);
     gtk_widget_class_bind_template_callback (widget_class, on_accept_button_clicked);
@@ -776,6 +829,7 @@ nautilus_file_chooser_class_init (NautilusFileChooserClass *klass)
     gtk_widget_class_bind_template_callback (widget_class, on_validator_has_feedback_changed);
     gtk_widget_class_bind_template_callback (widget_class, on_validator_will_overwrite_changed);
     gtk_widget_class_bind_template_callback (widget_class, on_file_drop);
+    gtk_widget_class_bind_template_callback (widget_class, get_filter_width_chars);
 
     properties[PROP_MODE] =
         g_param_spec_enum ("mode", NULL, NULL,

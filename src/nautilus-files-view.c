@@ -1475,9 +1475,7 @@ action_open_item_location (GSimpleAction *action,
         selection->data = item;
     }
 
-    nautilus_application_open_location_full (NAUTILUS_APPLICATION (g_application_get_default ()),
-                                             parent_location, 0, selection, NULL,
-                                             priv->slot);
+    nautilus_window_slot_open_location_full (priv->slot, parent_location, 0, selection);
 
     nautilus_file_unref (parent);
     nautilus_file_unref (activation_file);
@@ -7968,7 +7966,9 @@ real_update_actions_state (NautilusFilesView *view)
     g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
                                  (mode == NAUTILUS_MODE_BROWSE ||
                                   mode == NAUTILUS_MODE_SAVE_FILE ||
-                                  mode == NAUTILUS_MODE_SAVE_FILES) &&
+                                  mode == NAUTILUS_MODE_SAVE_FILES ||
+                                  mode == NAUTILUS_MODE_OPEN_FOLDER ||
+                                  mode == NAUTILUS_MODE_OPEN_FOLDERS) &&
                                  can_create_files);
 
     action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group),
@@ -8177,6 +8177,7 @@ update_selection_menu (NautilusFilesView *view,
     show_start = (selection != NULL && selection_count == 1);
     show_stop = (selection != NULL && selection_count == 1);
     show_detect_media = (selection != NULL && selection_count == 1);
+    item_opens_in_view = selection_count != 0;
     start_stop_type = G_DRIVE_START_STOP_TYPE_UNKNOWN;
 
     if (mode == NAUTILUS_MODE_BROWSE)
@@ -8193,7 +8194,7 @@ update_selection_menu (NautilusFilesView *view,
         g_free (item_label);
 
         /* Open With <App> menu item */
-        show_extract = show_app = show_run = item_opens_in_view = selection_count != 0;
+        show_extract = show_app = show_run = item_opens_in_view;
         for (l = selection; l != NULL; l = l->next)
         {
             NautilusFile *file;

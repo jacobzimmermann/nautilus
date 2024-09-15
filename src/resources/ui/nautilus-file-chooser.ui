@@ -5,8 +5,6 @@
     <property name="name">NautilusFileChooser</property>
     <property name="width-request">360</property>
     <property name="height-request">348</property>
-    <property name="default-width">890</property>
-    <property name="default-height">550</property>
     <property name="default-widget">accept_button</property>
     <property name="content">
       <object class="NautilusShortcutManager">
@@ -31,6 +29,16 @@
                             <property name="icon_name">edit-find-symbolic</property>
                           </object>
                         </child>
+                        <property name="title-widget">
+                          <object class="GtkLabel" id="title_widget">
+                            <property name="ellipsize">end</property>
+                            <property name="wrap">False</property>
+                            <property name="single-line-mode">True</property>
+                            <property name="width-chars">5</property>
+                            <property name="has-tooltip">true</property>
+                            <property name="label" bind-source="NautilusFileChooser" bind-property="title"></property>
+                          </object>
+                        </property>
                       </object>
                     </child>
                     <property name="content">
@@ -178,6 +186,7 @@
                                             <property name="icon-name">folder-new-symbolic</property>
                                             <property name="tooltip_text" translatable="yes">New Folder</property>
                                             <property name="action-name">view.new-folder</property>
+                                            <property name="focus-on-click">false</property>
                                           </object>
                                         </child>
                                         <child>
@@ -315,13 +324,18 @@
     <property name="child">
       <object class="GtkLabel">
         <property name="xalign">0</property>
-        <property name="width-chars">6</property>
-        <property name="max-width-chars">16</property>
         <property name="ellipsize">middle</property>
         <binding name="label">
           <lookup name="name" type="GtkFileFilter">
             <lookup name="item">GtkListItem</lookup>
           </lookup>
+        </binding>
+        <binding name = "width-chars">
+          <closure type="gint" function="get_filter_width_chars">
+            <lookup name="name" type="GtkFileFilter">
+              <lookup name="item">GtkListItem</lookup>
+            </lookup>
+          </closure>
         </binding>
       </object>
     </property>
@@ -353,7 +367,7 @@
       </object>
     </property>
     <child>
-      <object class="AdwBreakpoint">
+      <object class="AdwBreakpoint" id="breakpoint">
         <condition>max-width: 682sp</condition>
         <setter object="split_view" property="collapsed">true</setter>
         <setter object="toolbar" property="show-new-folder-button">false</setter>
