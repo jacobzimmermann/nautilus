@@ -1008,6 +1008,13 @@ nautilus_file_get_parent_uri_for_display (NautilusFile *file)
     {
         g_autofree gchar *parse_name = g_file_get_parse_name (parent);
 
+        /* URI decode the string if it is a network connection*/
+        if (g_uri_is_valid (parse_name, G_URI_FLAGS_NONE, NULL))
+        {
+            g_autofree gchar *temp = parse_name;
+            parse_name = g_uri_unescape_string (temp, NULL);
+        }
+
         /* Ensure a trailing slash to emphasize it is a directory */
         if (g_str_has_suffix (parse_name, G_DIR_SEPARATOR_S))
         {
@@ -4452,6 +4459,14 @@ get_filesystem_remote (NautilusFile *file,
 
     if (parent != NULL && parent->details->filesystem_info_is_up_to_date)
     {
+        if (nautilus_file_is_regular_file (file))
+        {
+            file->details->filesystem_remote = parent->details->filesystem_remote;
+            file->details->filesystem_readonly = parent->details->filesystem_readonly;
+            file->details->filesystem_use_preview = parent->details->filesystem_use_preview;
+            file->details->filesystem_info_is_up_to_date = TRUE;
+        }
+
         return parent->details->filesystem_remote;
     }
     else
@@ -4757,7 +4772,8 @@ nautilus_file_get_thumbnail_icon (NautilusFile          *file,
 
     icon = NULL;
 
-    if (file->details->thumbnail != NULL)
+    if (file->details->thumbnail_path != NULL &&
+        file->details->thumbnail != NULL)
     {
         GdkTexture *texture = file->details->thumbnail;
         double width = gdk_texture_get_width (texture) / scale;
@@ -7905,6 +7921,13 @@ nautilus_file_set_thumbnail (NautilusFile *file,
         {
             file->details->thumbnail = gdk_texture_new_for_pixbuf (pixbuf);
             file->details->thumbnail_mtime = thumb_mtime;
+
+            if (file->details->thumbnail_path == NULL)
+            {
+                g_autofree gchar *uri = nautilus_file_get_uri (file);
+
+                file->details->thumbnail_path = nautilus_thumbnail_get_path_for_uri (uri);
+            }
         }
         else
         {
