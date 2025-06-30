@@ -335,14 +335,16 @@ nautilus_application_open_location_full (NautilusApplication *self,
                                          NautilusOpenFlags    flags,
                                          GList               *selection,
                                          NautilusWindow      *target_window,
-                                         NautilusWindowSlot  *target_slot)
+                                         NautilusWindowSlot  *target_slot,
+                                         const char          *startup_id)
 {
     NAUTILUS_APPLICATION_CLASS (G_OBJECT_GET_CLASS (self))->open_location_full (self,
                                                                                 location,
                                                                                 flags,
                                                                                 selection,
                                                                                 target_window,
-                                                                                target_slot);
+                                                                                target_slot,
+                                                                                startup_id);
 }
 
 static void
@@ -351,7 +353,8 @@ real_open_location_full (NautilusApplication *self,
                          NautilusOpenFlags    flags,
                          GList               *selection,
                          NautilusWindow      *target_window,
-                         NautilusWindowSlot  *target_slot)
+                         NautilusWindowSlot  *target_slot,
+                         const char          *startup_id)
 {
     NautilusWindowSlot *active_slot = NULL;
     NautilusWindow *active_window;
@@ -447,7 +450,7 @@ real_open_location_full (NautilusApplication *self,
     /* Application is the one that manages windows, so this flag shouldn't use
      * it anymore by any client */
     flags &= ~NAUTILUS_OPEN_FLAG_NEW_WINDOW;
-    nautilus_window_open_location_full (target_window, location, flags, selection, target_slot);
+    nautilus_window_open_location_full (target_window, location, flags, selection, target_slot, startup_id);
 }
 
 static NautilusWindow *
@@ -458,13 +461,13 @@ open_window (NautilusApplication *self,
 
     if (location != NULL)
     {
-        nautilus_application_open_location_full (self, location, 0, NULL, window, NULL);
+        nautilus_application_open_location_full (self, location, 0, NULL, window, NULL, NULL);
     }
     else
     {
         GFile *home;
         home = g_file_new_for_path (g_get_home_dir ());
-        nautilus_application_open_location_full (self, home, 0, NULL, window, NULL);
+        nautilus_application_open_location_full (self, home, 0, NULL, window, NULL, NULL);
 
         g_object_unref (home);
     }
@@ -481,6 +484,12 @@ nautilus_application_open_location (NautilusApplication *self,
     NautilusWindow *window;
     NautilusWindowSlot *slot;
     GList *sel_list = NULL;
+    g_autofree char *location_uri = g_file_get_uri (location);
+
+    if (location_uri[0] == '\0')
+    {
+        return;
+    }
 
     if (selection != NULL)
     {
@@ -498,7 +507,7 @@ nautilus_application_open_location (NautilusApplication *self,
         window = get_nautilus_window_containing_slot (slot);
     }
 
-    nautilus_application_open_location_full (self, location, 0, sel_list, window, slot);
+    nautilus_application_open_location_full (self, location, 0, sel_list, window, slot, startup_id);
 
     if (sel_list != NULL)
     {
@@ -543,7 +552,7 @@ nautilus_application_open (GApplication  *app,
         else
         {
             /* We open the location again to update any possible selection */
-            nautilus_application_open_location_full (NAUTILUS_APPLICATION (app), file, 0, NULL, NULL, slot);
+            nautilus_application_open_location_full (NAUTILUS_APPLICATION (app), file, 0, NULL, NULL, slot, NULL);
         }
     }
 }
@@ -646,7 +655,7 @@ action_new_window (GSimpleAction *action,
 
     nautilus_application_open_location_full (application, home,
                                              NAUTILUS_OPEN_FLAG_NEW_WINDOW,
-                                             NULL, NULL, NULL);
+                                             NULL, NULL, NULL, NULL);
 }
 
 static void
@@ -688,7 +697,7 @@ action_clone_window (GSimpleAction *action,
     }
 
     nautilus_application_open_location_full (NAUTILUS_APPLICATION (application), location,
-                                             NAUTILUS_OPEN_FLAG_NEW_WINDOW, NULL, NULL, NULL);
+                                             NAUTILUS_OPEN_FLAG_NEW_WINDOW, NULL, NULL, NULL, NULL);
 }
 
 static void
@@ -1128,12 +1137,49 @@ maybe_migrate_gtk_filechooser_preferences (void)
 }
 
 static void
+nautilus_application_identify_to_portal (GApplication *app)
+{
+    GDBusConnection *session_bus = g_application_get_dbus_connection (app);
+    if (session_bus == NULL)
+    {
+        return;
+    }
+
+    GVariantBuilder builder;
+    g_variant_builder_init_static (&builder, G_VARIANT_TYPE_VARDICT);
+
+    /* Intentionally ignore errors */
+    g_dbus_connection_call (session_bus,
+                            "org.freedesktop.portal.Desktop",
+                            "/org/freedesktop/portal/desktop",
+                            "org.freedesktop.host.portal.Registry",
+                            "Register",
+                            g_variant_new ("(sa{sv})",
+                                           APPLICATION_ID,
+                                           &builder),
+                            NULL,
+                            G_DBUS_CALL_FLAGS_NO_AUTO_START,
+                            -1,
+                            NULL, NULL, NULL);
+}
+
+static void
 nautilus_application_startup (GApplication *app)
 {
     NautilusApplication *self = NAUTILUS_APPLICATION (app);
     NautilusApplicationPrivate *priv = nautilus_application_get_instance_private (self);
 
     g_application_set_resource_base_path (G_APPLICATION (self), "/org/gnome/nautilus");
+
+    /* Register the app with the host app registry in XDG Desktop Portal before
+     * we initialize GDK display, which on Wayland uses Settings portal.
+     * This is needed for subsequent portal calls to access app id, which is
+     * necessary for working suspend/logout inhibition.
+     * See https://gitlab.gnome.org/GNOME/nautilus/-/issues/3874 */
+    if (!nautilus_application_is_sandboxed ())
+    {
+        nautilus_application_identify_to_portal (app);
+    }
 
     /* Initialize GDK display (for wayland-x11-interop protocol) before GTK does
      * it during the chain-up. */
