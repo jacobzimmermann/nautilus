@@ -2137,7 +2137,7 @@ real_batch_rename (GList                         *files,
     op->renamed_files = 0;
     op->skipped_files = 0;
 
-    for (l1 = files->next; l1 != NULL; l1 = l1->next)
+    for (l1 = files; l1 != NULL; l1 = l1->next)
     {
         file = NAUTILUS_FILE (l1->data);
 
@@ -2155,8 +2155,7 @@ real_batch_rename (GList                         *files,
 
         new_file_name = nautilus_file_can_rename_file (file,
                                                        new_name->str,
-                                                       callback,
-                                                       callback_data);
+                                                       NULL, NULL);
 
         if (new_file_name == NULL)
         {
@@ -4843,12 +4842,12 @@ nautilus_file_get_thumbnail_icon (NautilusFile          *file,
         g_autoptr (GtkSnapshot) snapshot = gtk_snapshot_new ();
         GskRoundedRect rounded_rect;
 
-        if (MAX (width, height) > size)
+        if (MAX (width, height) != size)
         {
-            float scale_down_factor = MAX (width, height) / size;
+            double scale_factor = size / MAX (width, height);
 
-            width = width / scale_down_factor;
-            height = height / scale_down_factor;
+            width = round (width * scale_factor);
+            height = round (height * scale_factor);
         }
 
         gsk_rounded_rect_init_from_rect (&rounded_rect,
@@ -5515,6 +5514,8 @@ nautilus_file_set_permissions (NautilusFile                  *file,
                                                              file->details->permissions,
                                                              new_permissions);
         nautilus_file_undo_manager_set_action (undo_info);
+
+        g_object_unref (undo_info);
     }
 
     info = g_file_info_new ();
