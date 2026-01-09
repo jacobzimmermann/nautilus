@@ -644,7 +644,7 @@ typedef struct
 } TrashBrokenSymbolicLinkData;
 
 static void
-trash_symbolic_link_cb (GtkDialog *dialog,
+trash_symbolic_link_cb (AdwDialog *dialog,
                         char      *response,
                         gpointer   user_data)
 {
@@ -1063,7 +1063,7 @@ activate_mount_op_active (GtkMountOperation  *operation,
 }
 
 static void
-on_confirm_multiple_windows_response (GtkDialog          *dialog,
+on_confirm_multiple_windows_response (AdwDialog          *dialog,
                                       gchar              *response,
                                       ActivateParameters *parameters)
 {
@@ -1208,7 +1208,7 @@ open_with_response_cb (GtkDialog *dialog,
 }
 
 static void
-choose_program (GtkDialog *message_dialog,
+choose_program (AdwDialog *message_dialog,
                 gchar     *response,
                 gpointer   callback_data)
 {
@@ -1230,8 +1230,8 @@ choose_program (GtkDialog *message_dialog,
     location = nautilus_file_get_location (file);
     nautilus_file_ref (file);
 
-    /* Destroy the message dialog after ref:ing the file */
-    gtk_window_destroy (GTK_WINDOW (message_dialog));
+    /* Close the dialog after ref:ing the file */
+    adw_dialog_close (message_dialog);
 
     dialog = gtk_app_chooser_dialog_new (parameters->parent_window,
                                          GTK_DIALOG_MODAL,
@@ -1362,7 +1362,7 @@ search_for_application_mime_type (ActivateParametersInstall *parameters_install,
 }
 
 static void
-application_unhandled_file_install (GtkDialog                 *dialog,
+application_unhandled_file_install (AdwDialog                 *dialog,
                                     gchar                     *response,
                                     ActivateParametersInstall *parameters_install)
 {
