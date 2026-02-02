@@ -2718,8 +2718,11 @@ update_info_internal (NautilusFile *file,
     atime = g_file_info_get_attribute_uint64 (info, G_FILE_ATTRIBUTE_TIME_ACCESS);
     mtime = g_file_info_get_attribute_uint64 (info, G_FILE_ATTRIBUTE_TIME_MODIFIED);
     btime = g_file_info_get_attribute_uint64 (info, G_FILE_ATTRIBUTE_TIME_CREATED);
-    if (file->details->atime != atime ||
-        file->details->mtime != mtime)
+    if (file->details->atime != atime)
+    {
+        changed = TRUE;
+    }
+    if (file->details->mtime != mtime)
     {
         file->details->thumbnail_info_is_up_to_date = FALSE;
         file->details->thumbnail_is_up_to_date = FALSE;
@@ -2900,7 +2903,10 @@ nautilus_file_update_thumbnail_info (NautilusFile *file,
         changed = TRUE;
     }
 
-    gboolean thumbnailing_failed = g_file_info_get_attribute_boolean (info,
+    gboolean cache_is_valid = g_file_info_get_attribute_boolean (info,
+                                                                 G_FILE_ATTRIBUTE_THUMBNAIL_IS_VALID);
+    gboolean thumbnailing_failed = cache_is_valid &&
+                                   g_file_info_get_attribute_boolean (info,
                                                                       G_FILE_ATTRIBUTE_THUMBNAILING_FAILED);
     if (file->details->thumbnailing_failed != thumbnailing_failed)
     {
@@ -5114,6 +5120,17 @@ gboolean
 nautilus_file_should_show_directory_item_count (NautilusFile *file)
 {
     g_return_val_if_fail (NAUTILUS_IS_FILE (file), FALSE);
+
+    /* Don't count items in autofs directories to avoid triggering automount. */
+    if (file->details->is_mountpoint)
+    {
+        g_autoptr (GFile) location = nautilus_file_get_location (file);
+
+        if (nautilus_location_is_autofs_mountpoint (location))
+        {
+            return FALSE;
+        }
+    }
 
     return get_speed_tradeoff_preference_for_file (file, show_directory_item_count);
 }

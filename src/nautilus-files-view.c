@@ -4196,7 +4196,7 @@ process_pending_files (NautilusFilesView *self)
     }
     pending_additions = g_list_reverse (pending_additions);
 
-    if (files_added != NULL)
+    if (pending_additions != NULL)
     {
         g_signal_emit (self,
                        signals[ADD_FILES], 0, pending_additions);
@@ -5025,6 +5025,14 @@ get_file_paths_or_uris_as_newline_delimited_string (NautilusFileList *selection,
             }
 
             path = g_filename_from_uri (uri, NULL, NULL);
+
+            if (path == NULL)
+            {
+                g_autofree gchar *activation_uri = nautilus_file_get_activation_uri (file);
+
+                path = g_filename_from_uri (uri, NULL, NULL);
+            }
+
             if (path != NULL)
             {
                 g_string_append (expanding_string, path);
