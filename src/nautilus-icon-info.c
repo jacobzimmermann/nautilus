@@ -368,6 +368,15 @@ nautilus_icon_info_lookup (GIcon *icon,
 {
     NautilusIconInfo *icon_info;
 
+    if (G_IS_EMBLEMED_ICON (icon))
+    {
+        icon = g_emblemed_icon_get_icon (G_EMBLEMED_ICON (icon));
+    }
+    else if (G_IS_EMBLEM (icon))
+    {
+        icon = g_emblem_get_icon (G_EMBLEM (icon));
+    }
+
     if (G_IS_LOADABLE_ICON (icon))
     {
         g_autoptr (GdkPaintable) paintable = NULL;
@@ -467,8 +476,7 @@ nautilus_icon_info_lookup (GIcon *icon,
     }
     else
     {
-        /* Only GLoadableIcon and GThemedIcon are known and supported */
-        g_assert_not_reached ();
+        return nautilus_icon_info_get_fallback (size, scale);
     }
 }
 
