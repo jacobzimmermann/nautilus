@@ -390,7 +390,9 @@ file_info_ready_callback (GObject      *source_object,
     ThumbnailCacheItem *cache_item = thumbnail_cache_get (self->source);
 
     self->source_mtime = g_file_info_get_attribute_uint64 (info, G_FILE_ATTRIBUTE_TIME_MODIFIED);
-    self->source_content_type = g_strdup (g_file_info_get_content_type (info));
+    self->source_content_type = g_file_info_has_attribute (info, G_FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE)
+                                ? g_strdup (g_file_info_get_content_type (info))
+                                : g_strdup ("application/octet-stream");
 
     /* Look in nautilus's thumbnail cache */
     if (cache_item != NULL &&
@@ -743,16 +745,17 @@ real_snapshot (GtkWidget   *widget,
     else
     {
         GdkPaintable *paintable = get_error_paintable (self);
+        int width = self->size;
+        int height = self->size;
 
         if (self->fallback_paintable != NULL)
         {
             paintable = self->fallback_paintable;
+            width = gdk_paintable_get_intrinsic_width (paintable);
+            height = gdk_paintable_get_intrinsic_height (paintable);
         }
 
-        gdk_paintable_snapshot (paintable,
-                                GDK_SNAPSHOT (snapshot),
-                                gdk_paintable_get_intrinsic_width (paintable),
-                                gdk_paintable_get_intrinsic_height (paintable));
+        gdk_paintable_snapshot (paintable, GDK_SNAPSHOT (snapshot), width, height);
     }
 
     GTK_WIDGET_CLASS (nautilus_image_parent_class)->snapshot (widget, snapshot);
@@ -784,7 +787,7 @@ real_measure (GtkWidget      *widget,
             height = height / scale_factor;
         }
 
-        length = orientation == GTK_ORIENTATION_HORIZONTAL ? width : height;
+        length = round (orientation == GTK_ORIENTATION_HORIZONTAL ? width : height);
     }
     else if (status == NAUTILUS_IMAGE_STATUS_FALLBACK &&
              self->fallback_paintable != NULL)
