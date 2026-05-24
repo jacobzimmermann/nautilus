@@ -3759,8 +3759,9 @@ nautilus_properties_present_dialog (NautilusFileList *files,
 
     adw_dialog_set_content_width (dialog, DEFAULT_PROPERTIES_WIDTH);
     adw_dialog_set_child (dialog, GTK_WIDGET (self));
-    g_signal_connect_swapped (self, "hide-properties",
-                              G_CALLBACK (adw_dialog_force_close), dialog);
+    g_signal_connect_object (self, "hide-properties",
+                             G_CALLBACK (adw_dialog_force_close), dialog,
+                             G_CONNECT_SWAPPED);
 
     self->dialog = dialog;
     gtk_widget_set_visible (self->popout_button, TRUE);
@@ -3775,6 +3776,16 @@ close_popout_window (gpointer user_data)
 
     gtk_window_close (window);
     g_application_release (g_application_get_default ());
+}
+
+static gboolean
+close_request_popout_window (gpointer user_data)
+{
+    GtkWindow *window = GTK_WINDOW (user_data);
+
+    close_popout_window (window);
+
+    return FALSE;
 }
 
 static void
@@ -3807,6 +3818,8 @@ popout_window_clicked (NautilusPropertiesWidget *self)
     g_signal_emit (self, signals[HIDE], 0);
     g_signal_connect_swapped (self, "hide-properties",
                               G_CALLBACK (close_popout_window), new_window);
+    g_signal_connect (new_window, "close-request",
+                      G_CALLBACK (close_request_popout_window), NULL);
 
     gtk_window_present (new_window);
 }

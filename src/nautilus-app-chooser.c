@@ -11,6 +11,7 @@
 
 #include "nautilus-file.h"
 #include "nautilus-signaller.h"
+#include "nautilus-app-chooser-widget.h"
 
 struct _NautilusAppChooser
 {
@@ -25,8 +26,9 @@ struct _NautilusAppChooser
     GtkWidget *label_description;
     GtkWidget *set_default_list_box;
     GtkWidget *set_default_row;
+    GtkWidget *search_entry;
 
-    GtkWidget *app_chooser_widget;
+    NautilusAppChooserWidget *app_chooser_widget;
 };
 
 G_DEFINE_TYPE (NautilusAppChooser, nautilus_app_chooser, ADW_TYPE_DIALOG)
@@ -57,36 +59,33 @@ open_cb (NautilusAppChooser *self)
 
     info = nautilus_app_chooser_get_app_info (self);
 
-    if (!self->single_content_type)
+    if (self->single_content_type)
     {
-        /* Don't attempt to set an association with multiple content types */
-        return;
-    }
+        /* The switch is insensitive if the selected app is already default */
+        if (gtk_widget_get_sensitive (self->set_default_row))
+        {
+            set_new_default = adw_switch_row_get_active (ADW_SWITCH_ROW (self->set_default_row));
+        }
 
-    /* The switch is insensitive if the selected app is already default */
-    if (gtk_widget_get_sensitive (self->set_default_row))
-    {
-        set_new_default = adw_switch_row_get_active (ADW_SWITCH_ROW (self->set_default_row));
-    }
+        if (set_new_default)
+        {
+            g_app_info_set_as_default_for_type (info, self->content_type,
+                                                &error);
+            g_signal_emit_by_name (nautilus_signaller_get_current (), "mime-data-changed");
+        }
 
-    if (set_new_default)
-    {
-        g_app_info_set_as_default_for_type (info, self->content_type,
-                                            &error);
-        g_signal_emit_by_name (nautilus_signaller_get_current (), "mime-data-changed");
-    }
+        if (error != NULL)
+        {
+            AdwAlertDialog *dialog;
 
-    if (error != NULL)
-    {
-        AdwAlertDialog *dialog;
+            dialog = ADW_ALERT_DIALOG (adw_alert_dialog_new (_("Could not set as default"), NULL));
+            adw_alert_dialog_format_body (dialog,
+                                          _("Error while setting “%s” as default app: %s"),
+                                          g_app_info_get_display_name (info), error->message);
+            adw_alert_dialog_add_response (dialog, "close", _("_OK"));
 
-        dialog = ADW_ALERT_DIALOG (adw_alert_dialog_new (_("Could not set as default"), NULL));
-        adw_alert_dialog_format_body (dialog,
-                                      _("Error while setting “%s” as default app: %s"),
-                                      g_app_info_get_display_name (info), error->message);
-        adw_alert_dialog_add_response (dialog, "close", _("_OK"));
-
-        adw_dialog_present (ADW_DIALOG (dialog), GTK_WIDGET (self));
+            adw_dialog_present (ADW_DIALOG (dialog), GTK_WIDGET (self));
+        }
     }
 
     g_signal_emit (self, signals[SIGNAL_APP_SELECTED], 0, info);
@@ -99,9 +98,9 @@ on_application_activated (NautilusAppChooser *self)
 }
 
 static void
-on_application_selected (GtkAppChooserWidget *widget,
-                         GAppInfo            *info,
-                         gpointer             user_data)
+on_application_selected (NautilusAppChooserWidget *widget,
+                         GAppInfo                 *info,
+                         gpointer                  user_data)
 {
     NautilusAppChooser *self = NAUTILUS_APP_CHOOSER (user_data);
     g_autoptr (GAppInfo) default_app = NULL;
@@ -110,33 +109,10 @@ on_application_selected (GtkAppChooserWidget *widget,
     gtk_widget_set_sensitive (self->ok_button, info != NULL);
 
     default_app = g_app_info_get_default_for_type (self->content_type, FALSE);
-    is_default = default_app != NULL && g_app_info_equal (info, default_app);
+    is_default = default_app != NULL && info != NULL && g_app_info_equal (info, default_app);
 
     adw_switch_row_set_active (ADW_SWITCH_ROW (self->set_default_row), is_default);
     gtk_widget_set_sensitive (GTK_WIDGET (self->set_default_row), !is_default);
-}
-
-static void
-focus_app_chooser_widget (NautilusAppChooser *self)
-{
-    /* This is a very hacky way to make focusing on the app chooser widget work.
-     * The widget is deprecated anyway and intended to be replaced by a new
-     * implementation, so we'll live with this rather than patching GTK.
-     */
-
-    GtkWidget *child = gtk_widget_get_first_child (self->app_chooser_widget);
-    g_return_if_fail (GTK_IS_OVERLAY (child));
-
-    child = gtk_widget_get_first_child (child);
-    g_return_if_fail (GTK_IS_SCROLLED_WINDOW (child));
-
-    child = gtk_widget_get_first_child (child);
-    g_return_if_fail (GTK_IS_LIST_VIEW (child));
-
-    gtk_widget_grab_focus (child);
-
-    /* Matching ref of timeout creation */
-    g_object_unref (self);
 }
 
 static void
@@ -199,26 +175,22 @@ nautilus_app_chooser_constructed (GObject *object)
 
     G_OBJECT_CLASS (nautilus_app_chooser_parent_class)->constructed (object);
 
-    self->app_chooser_widget = gtk_app_chooser_widget_new (self->content_type);
-    gtk_widget_set_vexpand (self->app_chooser_widget, TRUE);
-    gtk_widget_add_css_class (self->app_chooser_widget, "lowres-icon");
-    gtk_box_append (GTK_BOX (self->content_box), self->app_chooser_widget);
+    self->app_chooser_widget = nautilus_app_chooser_widget_new (self->content_type);
+    gtk_widget_set_vexpand (GTK_WIDGET (self->app_chooser_widget), TRUE);
+    gtk_widget_add_css_class (GTK_WIDGET (self->app_chooser_widget), "lowres-icon");
+    gtk_box_append (GTK_BOX (self->content_box), GTK_WIDGET (self->app_chooser_widget));
 
-    gtk_app_chooser_widget_set_show_default (GTK_APP_CHOOSER_WIDGET (self->app_chooser_widget), TRUE);
-    gtk_app_chooser_widget_set_show_fallback (GTK_APP_CHOOSER_WIDGET (self->app_chooser_widget), TRUE);
-    gtk_app_chooser_widget_set_show_other (GTK_APP_CHOOSER_WIDGET (self->app_chooser_widget), TRUE);
-
-    /* See comment in focus_app_chooser_widget(). Hold self reference to prevent segfaults. */
-    guint upper_dialog_creation_estimate = 100;
-    g_timeout_add_once (upper_dialog_creation_estimate,
-                        (GSourceOnceFunc) focus_app_chooser_widget,
-                        g_object_ref (self));
+    nautilus_app_chooser_widget_set_show_default (self->app_chooser_widget, TRUE);
+    nautilus_app_chooser_widget_set_show_fallback (self->app_chooser_widget, TRUE);
+    nautilus_app_chooser_widget_set_show_other (self->app_chooser_widget, TRUE);
+    nautilus_app_chooser_widget_set_search_entry (self->app_chooser_widget,
+                                                  GTK_EDITABLE (self->search_entry));
 
     /* initialize sensitivity */
     info = nautilus_app_chooser_get_app_info (self);
     if (info != NULL)
     {
-        on_application_selected (GTK_APP_CHOOSER_WIDGET (self->app_chooser_widget),
+        on_application_selected (self->app_chooser_widget,
                                  info, self);
     }
 
@@ -307,6 +279,7 @@ nautilus_app_chooser_class_init (NautilusAppChooserClass *klass)
     gtk_widget_class_bind_template_child (widget_class, NautilusAppChooser, label_description);
     gtk_widget_class_bind_template_child (widget_class, NautilusAppChooser, set_default_list_box);
     gtk_widget_class_bind_template_child (widget_class, NautilusAppChooser, set_default_row);
+    gtk_widget_class_bind_template_child (widget_class, NautilusAppChooser, search_entry);
 
     gtk_widget_class_bind_template_callback (widget_class, open_cb);
 
@@ -355,5 +328,5 @@ nautilus_app_chooser_new (GList *files)
 GAppInfo *
 nautilus_app_chooser_get_app_info (NautilusAppChooser *self)
 {
-    return gtk_app_chooser_get_app_info (GTK_APP_CHOOSER (self->app_chooser_widget));
+    return nautilus_app_chooser_widget_get_app_info (self->app_chooser_widget);
 }
