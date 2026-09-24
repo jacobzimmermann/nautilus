@@ -440,11 +440,7 @@ nautilus_application_open (GApplication  *app,
                            const gchar   *hint)
 {
     NautilusApplication *self = NAUTILUS_APPLICATION (app);
-
-    /* Either open new window or re-open existing location to update selection */
-    NautilusOpenFlags flags = g_strcmp0 (hint, "new-window") == 0
-                              ? NAUTILUS_OPEN_FLAG_NEW_WINDOW
-                              : NAUTILUS_OPEN_FLAG_REUSE_EXISTING;
+    NautilusOpenFlags flags = NAUTILUS_OPEN_FLAG_NEW_WINDOW;
 
     g_debug ("Open called on the GApplication instance; %d files", n_files);
 
